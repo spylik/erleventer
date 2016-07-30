@@ -1,7 +1,6 @@
 -module(erlcron_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("frames.hrl").
 
 -define(TESTMODULE, erlcron).
 -define(TESTID, limpopo).
@@ -17,7 +16,7 @@ erlcron_start_stop_test_() ->
             [
                 {<<"erlcron gen_server able to start and register with right name">>, 
                     fun() ->
-						?TESTMODULE:start_link(?TESTID),
+                        ?TESTMODULE:start_link(?TESTID),
                         ?assertEqual(
                             true,
                             is_pid(whereis(?TESTSERVER))
@@ -31,18 +30,18 @@ erlcron_start_stop_test_() ->
                             is_pid(whereis(?TESTSERVER))
                         )
                 end},
-				{<<"erlcron gen_server able to start and stop via ?TESTMODULE:start_link(?TESTID) / ?TESTMODULE:stop(sync, ?TESTID)">>,
+                {<<"erlcron gen_server able to start and stop via ?TESTMODULE:start_link(?TESTID) / ?TESTMODULE:stop(sync, ?TESTID)">>,
                     fun() ->
-						?TESTMODULE:start_link(?TESTID),
+                        ?TESTMODULE:start_link(?TESTID),
                         ?assertExit({normal,{gen_server,call,[?TESTSERVER, stop]}}, ?TESTMODULE:stop(sync, ?TESTID)),
                         ?assertEqual(
                             false,
                             is_pid(whereis(?TESTSERVER))
                         )
                 end},
-				{<<"erlcron able to start and stop via ?TESTMODULE:start_link(Market) ?TESTMODULE:stop(async,Market)">>,
+                {<<"erlcron able to start and stop via ?TESTMODULE:start_link(Market) ?TESTMODULE:stop(async,Market)">>,
                     fun() ->
-						?TESTMODULE:start_link(?TESTID),
+                        ?TESTMODULE:start_link(?TESTID),
                         ?TESTMODULE:stop(async,?TESTID),
                         timer:sleep(1), % for async cast
                         ?assertEqual(
@@ -118,49 +117,49 @@ eventer_test_ () ->
             [
                 {<<"Able to create new task and send data">>, 
                     fun() ->
-						LoopWait = 4,
-						Freq = 2,
-						CountTill = 10,
-						TestMsg = {case1, mlibs:gen_id()},
-						?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
-						Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
-						Await = [TestMsg || _N <- lists:seq(1,CountTill)],
-						?assertEqual(Await,Data)
+                        LoopWait = 4,
+                        Freq = 2,
+                        CountTill = 10,
+                        TestMsg = {case1, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
+                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
+                        ?assertEqual(Await,Data)
                 end},
                 {<<"Able to create new task with new MestMsg">>, 
                     fun() ->
-						LoopWait = 4,
-						Freq = 2,
-						CountTill = 3,
-						TestMsg = {case2, mlibs:gen_id()},
-						?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
-						Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
-						Await = [TestMsg || _N <- lists:seq(1,CountTill)],
-						?assertEqual(Await,Data),
-						ok
+                        LoopWait = 4,
+                        Freq = 2,
+                        CountTill = 3,
+                        TestMsg = {case2, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
+                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
+                        ?assertEqual(Await,Data),
+                        ok
                 end},
-                {<<"If we call TESTMODULE:add twice with same arguments, it should do not create new event in ets and still have only 3 reference in state">>, 
+                {<<"If we call TESTMODULE:add twice with same arguments, it won't create new event in ets and still have only 3 reference in state">>, 
                     fun() ->
-						Freq = 1000,
-						TestMsg = {case3, mlibs:gen_id()},
-						?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        Freq = 1000,
+                        TestMsg = {case3, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
 
-						EtsData = ets:tab2list(?TESTSERVER),
-						?assert(is_list(EtsData)),
-						?assertNotEqual([], EtsData),
-						
-						?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
-						EtsData2 = ets:tab2list(?TESTSERVER),
-						?assert(is_list(EtsData2)),
-						?assertNotEqual([], EtsData2),
-						?assertEqual(EtsData, EtsData2),
+                        EtsData = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData)),
+                        ?assertNotEqual([], EtsData),
+                        
+                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData2 = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData2)),
+                        ?assertNotEqual([], EtsData2),
+                        ?assertEqual(EtsData, EtsData2),
 
-						{state, ?TESTSERVER, State} = sys:get_state(?TESTSERVER),
-						?assertEqual(3, maps:size(State))
+                        {state, ?TESTSERVER, State} = sys:get_state(?TESTSERVER),
+                        ?assertEqual(3, maps:size(State))
                 end}
-			]
-		}
-	}.
+            ]
+        }
+    }.
 
 
 setup_start() ->
@@ -178,7 +177,7 @@ stop_server(_) ->
     ok.
 
 start_server() -> 
-	?TESTMODULE:start_link(?TESTID).
+    ?TESTMODULE:start_link(?TESTID).
 
 % recieve loop
 recieve_loop(Acc,WaitFor,LoopWait,Max,Current) when Max > Current ->

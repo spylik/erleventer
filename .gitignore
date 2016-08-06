@@ -20,3 +20,4 @@ erlcron.d
 cover/*
 eunit.coverdata
 ct.cover.spec
+.erlang.mk/

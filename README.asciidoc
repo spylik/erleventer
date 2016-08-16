@@ -1,5 +1,5 @@
-image:https://api.travis-ci.org/spylik/erlcron.svg?branch=master[title="Build Status", link="https://travis-ci.org/spylik/erlcron"]
+image:https://api.travis-ci.org/spylik/erlcron.svg?branch=master[title="Build Status", link="https://travis-ci.org/spylik/erlcron"] image:https://codecov.io/gh/spylik/erlcron/branch/master/graph/badge.svg[title="Codecov", link="https://codecov.io/gh/spylik/erlcron/branches/master"]
 
 = Erlcron
 
-Erlcron is the simple erlang job scheduler.
+Erlcron is the simple erlang job scheduler. Very alpha version

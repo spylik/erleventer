@@ -1,11 +1,11 @@
 language: erlang
-script: 
+install: "sudo pip install codecov"
+script:
   - make
-  - make tests
+  - make dialyze
+  - make tests COVER=1
 otp_release:
   - 19.0
   - 18.3
-  - 18.0
-  - 17.5
-  - 17.0
-sudo: false
+
+after_success: "escript ./deps/covertool/ebin/covertool.beam -cover ./eunit.coverdata -output cobertura.xml -appname erlcron -src ./src && codecov"

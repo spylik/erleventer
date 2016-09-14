@@ -11,6 +11,6 @@ endif
 
 SHELL_DEPS = sync lager
 
-SHELL_OPTS = -pa ebin/ test/ -env ERL_LIBS deps -eval 'code:ensure_loaded(erlcron),code:ensure_loaded(erlcron_tests),lager:start()' -run mlibs autotest_on_compile
+SHELL_OPTS = -pa ebin/ test/ -env ERL_LIBS deps -eval 'mlibs:discover(),lager:start()' -run mlibs autotest_on_compile
 
 include erlang.mk

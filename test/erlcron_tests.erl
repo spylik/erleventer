@@ -24,7 +24,7 @@ erlcron_start_stop_test_() ->
                 end},
                 {<<"erlcron gen_server able to stop via ?TESTMODULE:stop(?TESTID)">>,
                     fun() ->
-                        ?assertExit({normal,{gen_server,call,[?TESTSERVER,stop]}}, ?TESTMODULE:stop(?TESTID)),
+                        ok = ?TESTMODULE:stop(?TESTID),
                         ?assertEqual(
                             false,
                             is_pid(whereis(?TESTSERVER))
@@ -33,7 +33,7 @@ erlcron_start_stop_test_() ->
                 {<<"erlcron gen_server able to start and stop via ?TESTMODULE:start_link(?TESTID) / ?TESTMODULE:stop(sync, ?TESTID)">>,
                     fun() ->
                         ?TESTMODULE:start_link(?TESTID),
-                        ?assertExit({normal,{gen_server,call,[?TESTSERVER, stop]}}, ?TESTMODULE:stop(sync, ?TESTID)),
+                        ok = ?TESTMODULE:stop(sync, ?TESTID),
                         ?assertEqual(
                             false,
                             is_pid(whereis(?TESTSERVER))
@@ -172,7 +172,7 @@ disable_output() ->
 stop_server(_) ->
     case whereis(?TESTSERVER) of
         undefined -> ok;
-        _ -> ?assertExit({normal,{gen_server,call,[?TESTSERVER,stop]}}, ?TESTMODULE:stop(?TESTID))
+        _ -> ?TESTMODULE:stop(?TESTID)
     end,
     ok.
 

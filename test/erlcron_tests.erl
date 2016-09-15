@@ -147,15 +147,13 @@ eventer_test_ () ->
                         EtsData = ets:tab2list(?TESTSERVER),
                         ?assert(is_list(EtsData)),
                         ?assertNotEqual([], EtsData),
-                        
+                        ?assertEqual(3, length(EtsData)),
                         ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
                         EtsData2 = ets:tab2list(?TESTSERVER),
                         ?assert(is_list(EtsData2)),
                         ?assertNotEqual([], EtsData2),
                         ?assertEqual(EtsData, EtsData2),
-
-                        {state, ?TESTSERVER, State} = sys:get_state(?TESTSERVER),
-                        ?assertEqual(3, maps:size(State))
+                        ?assertEqual(3, length(EtsData2))
                 end}
             ]
         }

@@ -105,6 +105,19 @@ init(Id) ->
 
 %--------------handle_call----------------
 
+% @doc callbacks for gen_server handle_call.
+-spec handle_call(Message, From, State) -> Result when
+    Message :: Add,
+    Add     :: {'add', Freq, Pid, Method, Message},
+    Freq    :: pos_integer(),
+    Pid     :: atom() | pid(),
+    Method  :: methods(),
+    Message :: msgformat(),
+    From    :: {pid(), Tag},
+    Tag     :: term(),
+    State   :: state(),
+    Result  :: {reply, Result, State}.
+
 % @doc handle add events
 handle_call({add, Freq, Pid, Method, Message}, _From, State = #state{etsname = EtsName}) ->
     Id = term_to_binary({Freq, Pid, Method, Message}),
@@ -118,7 +131,7 @@ handle_call({add, Freq, Pid, Method, Message}, _From, State = #state{etsname = E
                 id = Id,
                 freq = Freq,
                 pid = Pid,
-                method = method,
+                method = Method,
                 message = Message,
                 tref = TRef
             },
@@ -129,10 +142,6 @@ handle_call({add, Freq, Pid, Method, Message}, _From, State = #state{etsname = E
     % create new key in timeref map
     {reply, Ref, State};
 
-% handle_call for stop
-handle_call(stop, _From, State) ->
-    {stop, normal, State};
-
 % handle_call for all other thigs
 handle_call(Msg, _From, State) ->
     ?undefined(Msg),
@@ -142,11 +151,17 @@ handle_call(Msg, _From, State) ->
 
 %--------------handle_cast-----------------
 
+% @doc callbacks for gen_server handle_call.
+-spec handle_cast(Message, State) -> Result when
+    Message :: 'stop',
+    State :: state(),
+    Result :: {noreply, State} | {stop, normal, State}.
+
 % handle_cast for stop
 handle_cast(stop, State) ->
     {stop, normal, State};
 
-% handle_cast for all other thigs
+% handle_cast for unexpected things
 handle_cast(Msg, State) ->
     ?undefined(Msg),
     {noreply, State}.
@@ -154,20 +169,39 @@ handle_cast(Msg, State) ->
 
 %--------------handle_info-----------------
 
+% @doc callbacks for gen_server handle_info.
+-spec handle_info(Message, State) -> Result when
+    Message :: term(),
+    State   :: term(),
+    Result  :: {noreply, State}.
+
 %% handle_info for all other thigs
 handle_info(Msg, State) ->
     ?undefined(Msg),
     {noreply, State}.
 %-----------end of handle_info-------------
 
-% @doc on terminate going to cancel all timers before die
+% @doc call back for gen_server terminate
+-spec terminate(Reason, State) -> term() when
+    Reason :: 'normal' | 'shutdown' | {'shutdown',term()} | term(),
+    State :: term().
+
 terminate(Reason, State = #state{etsname = EtsName}) ->
-    lists:map(
+    _ = lists:map(
         fun(#events{tref = TRef}) ->
             timer:cancel(TRef)
         end, ets:tab2list(EtsName)
     ),
     {noreply, Reason, State}.
+
+% @doc call back for gen_server code_change
+-spec code_change(OldVsn, State, Extra) -> Result when
+    OldVsn :: Vsn | {down, Vsn},
+    Vsn :: term(),
+    State :: term(),
+    Extra :: term(),
+    Result :: {ok, NewState},
+    NewState :: term().
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.

@@ -3,7 +3,7 @@
 %% @author  Oleksii Semilietov <spylik@gmail.com>
 %%
 %% @doc
-%% Erlcron is the simple OTP job scheduler.
+%% Erlcron is the simple wraper around `timer:send_after` for easy management periodic events.
 %% @end
 %% --------------------------------------------------------------------------------
 
@@ -28,28 +28,32 @@
         start_link/1,
         stop/1,
         stop/2,
-        add/5   % todo different remove
+        add/5,
+        cancel/2
     ]).
 
 -define(SERVER(Id), 
     list_to_atom(lists:concat([Id, "_", ?MODULE]))
 ).
 
--type methods() :: 'cast' | 'call' | 'info'.
--type msgformat() :: mfa() | term().
--type id() :: binary().
+-type process()     :: pid() | atom().
+-type msgformat()   :: term().
+-type methods()     :: 'cast' | 'call' | 'info'.
+-type parameters()  :: {'freq', pos_integer()} | 
+                       {'pid', process()} | 
+                       {'method', methods()} |
+                       {'message', msgformat()}.
 
 -record(events, {
-        id :: id(),
-        freq :: pos_integer(),
-        pid :: atom() | pid(),
-        method :: methods(),
-        message :: msgformat()
+        freq    :: pos_integer() | '_',
+        pid     :: atom() | pid() | '_',
+        method  :: methods() | '_',
+        message :: msgformat() | '_',
+        tref    :: timer:tref() | '_'
     }).
 
 -record(state, {
-        etsname :: atom(),
-        timeref :: #{id() => reference()}
+        etsname :: atom()
     }).
 
 -type state() :: #state{}.
@@ -70,75 +74,108 @@ start_link(Id) ->
     gen_server:start_link({local, ?SERVER(Id)}, ?MODULE, Id, []).
 
 % @doc API for stop gen_server. Default is sync call.
--spec stop(Id) -> Reply
-    when 
-        Id :: atom(),
-        Reply :: term().
+-spec stop(Id) -> Result when 
+    Id      :: atom(),
+    Result  :: term().
 
 stop(Id) ->
     stop(sync, Id).
 
-% @doc API for stop gen_server. We support async casts and sync cals aswell.
--spec stop(SyncAsync, Id) -> Reply
-    when
-        SyncAsync :: 'sync' | 'async',
-        Id :: atom(),
-        Reply :: term().
+% @doc API for stop gen_server. We support async casts and sync calls aswell.
+-spec stop(SyncAsync, Id) -> Result when
+    SyncAsync   :: 'sync' | 'async',
+    Id          :: atom(),
+    Result      :: term().
 
 stop(sync, Id) ->
-    gen_server:call(?SERVER(Id), stop);
+    gen_server:stop(?SERVER(Id));
 stop(async, Id) ->
     gen_server:cast(?SERVER(Id), stop).
 
 % @doc While init we going to create ets table
--spec init(Id) -> Reply 
-    when 
-        Id :: atom(),
-        Reply :: {'ok', state()}.
+-spec init(Id) -> Result when 
+    Id      :: atom(),
+    Result  :: {'ok', state()}.
 
 init(Id) ->
     EtsName = ?SERVER(Id),
-    _Tid = ets:new(EtsName, [set, protected, {keypos, #events.id}, named_table]),
+    _Tid = ets:new(EtsName, [set, protected, {keypos, #events.tref}, named_table]),
     
     {ok, #state{
-            etsname=EtsName,
-            timeref=#{} % going to inicialyze empty map
+            etsname=EtsName
         }
     }.
 
 %--------------handle_call----------------
 
+% @doc callbacks for gen_server handle_call.
+-spec handle_call(Message, From, State) -> Result when
+    Message :: Add | Cancel,
+    Add     :: {'add', Freq, Pid, Method, Message},
+    Cancel  :: {'cancel', parameters()},
+    Freq    :: pos_integer(),
+    Pid     :: process(),
+    Method  :: methods(),
+    Message :: msgformat(),
+    From    :: {pid(), Tag},
+    Tag     :: term(),
+    State   :: state(),
+    Reply   :: {'added', timer:tref()} | {'exists', timer:tref()} | [{'canceled', timer:tref()}] | [],
+    Result  :: {reply, Reply, State}.
+
 % @doc handle add events
-handle_call({add, Freq, Pid, Method, Message}, _From, State = #state{etsname = EtsName, timeref = TimeRef}) ->
-    Id = term_to_binary({Freq, Pid, Method, Message}),
-    Task = #events{
-        id = Id,
-        freq = Freq,
-        pid = Pid,
-        method = Method,
-        message = Message
-    },
-    ets:insert(EtsName, Task),
-    
-    % check maybe we already have reference for this task
-    Ref = maps:get(Id, TimeRef ,undefined), 
+handle_call({add, Freq, Pid, Method, Message}, _From, State = #state{etsname = EtsName}) ->
+    MS = [{#events{'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'tref' = '_'}, [], ['$_']}],
 
-    % first call we always fire immidiatly (if we do not have reference)
-    _ = case Ref of
-        undefined -> self() ! {{id, Id}, {freq, Freq}, {server_pid, Pid}, {method, Method}, {message, Message}};
-        _ -> true
+    Reply = case ets:select(EtsName, MS) of
+        [#events{tref = TRef}] -> 
+            {'exists', TRef};
+        [] ->
+            {ok, TRef} = cast_task(Freq, Pid, Method, Message),
+            Task = #events{
+                freq = Freq,
+                pid = Pid,
+                method = Method,
+                message = Message,
+                tref = TRef
+            },
+            ets:insert(EtsName, Task),
+            {'added',TRef}
     end,
-
+    
     % create new key in timeref map
-    {reply, {created, Id}, 
-        State#state{
-            timeref = TimeRef#{Id => Ref}
-        }
-    };
+    {reply, Reply, State};
 
-% handle_call for stop
-handle_call(stop, _From, State) ->
-    {stop, normal, State};
+handle_call({cancel, Parameters}, _From, State = #state{etsname = EtsName}) ->
+    Freq = 
+        case lists:keyfind('freq', 1, Parameters) of
+            {'freq', Val1} -> Val1;
+            false -> '_'
+        end,
+    Pid = 
+        case lists:keyfind('pid', 1, Parameters) of
+            {'pid', Val2} -> Val2;
+            false -> '_'
+        end,
+    Method = 
+        case lists:keyfind('method', 1, Parameters) of
+            {'method', Val3} -> Val3;
+            false -> '_'
+        end,
+    Message = 
+        case lists:keyfind('message', 1, Parameters) of
+            {'message', Val4} -> Val4;
+            false -> '_'
+        end,
+    MS = [{#events{'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'tref' = '_'}, [], ['$_']}],
+    Gone = lists:map(
+        fun(#events{tref = TRef}) ->
+            _ = timer:cancel(TRef),
+            ets:delete(EtsName, TRef),
+            {'canceled', TRef}
+        end, ets:select(EtsName, MS)
+    ), {reply, Gone, State};
+
 
 % handle_call for all other thigs
 handle_call(Msg, _From, State) ->
@@ -149,11 +186,17 @@ handle_call(Msg, _From, State) ->
 
 %--------------handle_cast-----------------
 
+% @doc callbacks for gen_server handle_call.
+-spec handle_cast(Message, State) -> Result when
+    Message :: 'stop',
+    State   :: state(),
+    Result  :: {noreply, State} | {stop, normal, State}.
+
 % handle_cast for stop
 handle_cast(stop, State) ->
     {stop, normal, State};
 
-% handle_cast for all other thigs
+% handle_cast for unexpected things
 handle_cast(Msg, State) ->
     ?undefined(Msg),
     {noreply, State}.
@@ -161,34 +204,11 @@ handle_cast(Msg, State) ->
 
 %--------------handle_info-----------------
 
-% we handle here all send_after events, forward it to destination and cast new send_after for same task
-handle_info({{id, Id}, {freq, Freq}, {server_pid, Pid}, {method, Method}, {message, Msg}}, #state{timeref = Timeref} = State) ->
-    % if we have timer, we going to cancel it
-    _ = case maps:get(Id, Timeref) of 
-        undefined -> ok;
-        OldRef -> erlang:cancel_timer(OldRef)
-    end,
-
-    % cast new send_after to self() 
-    NewRef = erlang:send_after(Freq, self(), {{id, Id}, {freq, Freq}, {server_pid, Pid}, {method, Method}, {message, Msg}}),
-
-    % if we generating message content from external function
-    Message = case Msg of
-        {M, F, A} when is_function(F) -> erlang:apply(M,F,A);
-        _ -> Msg
-    end,
-
-    % sending message
-    case Method of 
-        cast -> gen_server:cast(Pid, Message);
-        call -> gen_server:call(Pid, Message);
-        info -> Pid ! Message
-    end,
-    {noreply, 
-        State#state{
-            timeref = Timeref#{Id := NewRef}
-        }
-    };
+% @doc callbacks for gen_server handle_info.
+-spec handle_info(Message, State) -> Result when
+    Message :: term(),
+    State   :: term(),
+    Result  :: {noreply, State}.
 
 %% handle_info for all other thigs
 handle_info(Msg, State) ->
@@ -196,25 +216,71 @@ handle_info(Msg, State) ->
     {noreply, State}.
 %-----------end of handle_info-------------
 
+% @doc call back for gen_server terminate
+-spec terminate(Reason, State) -> term() when
+    Reason  :: 'normal' | 'shutdown' | {'shutdown',term()} | term(),
+    State   :: term().
 
-terminate(Reason, State) ->
+terminate(Reason, State = #state{etsname = EtsName}) ->
+    _ = lists:map(
+        fun(#events{tref = TRef}) ->
+            timer:cancel(TRef)
+        end, ets:tab2list(EtsName)
+    ),
     {noreply, Reason, State}.
+
+% @doc call back for gen_server code_change
+-spec code_change(OldVsn, State, Extra) -> Result when
+    OldVsn      :: Vsn | {down, Vsn},
+    Vsn         :: term(),
+    State       :: term(),
+    Extra       :: term(),
+    Result      :: {ok, NewState},
+    NewState    :: term().
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 % ============================= end of gen_server part =========================
 
-% @doc interface for add new event
--spec add(Id, Freq, Pid, Method, Message) -> {ok, State} when
-    Id :: markets_sup:market(),
-    Freq :: pos_integer(),
-    Pid :: atom() | pid(),
-    Method :: methods(),
+% @doc interface for sending message with different methods
+-spec cast_task (Freq, Pid, Method, Message) -> Result when
+    Freq    :: pos_integer(),
+    Pid     :: process(),
+    Method  :: methods(),
     Message :: msgformat(),
-    State :: state().
+    Result  :: {ok, timer:tref()}.
+
+cast_task(Freq, Pid, 'info', Message) ->
+    timer:send_interval(Freq, Pid, Message);
+
+cast_task(Freq, Pid, 'cast', Message) ->
+    timer:apply_interval(Freq, gen_server, 'cast', [Pid,Message]);
+
+cast_task(Freq, Pid, 'call', Message) ->
+    timer:apply_interval(Freq, gen_server, 'call', [Pid,Message]).
+
+% @doc interface for add new event
+-spec add(Id, Freq, Pid, Method, Message) -> Result when
+    Id      :: atom(),
+    Freq    :: pos_integer(),
+    Pid     :: process(),
+    Method  :: methods(),
+    Message :: msgformat(),
+    Result  :: {ok, timer:tref()}.
 
 add(Id, Freq, Pid, Method, Message) ->
     gen_server:call(?SERVER(Id), {add, Freq, Pid, Method, Message}).
+
+% @doc delete
+-spec cancel(Id, Parameters) -> Result when
+    Id          :: atom(),
+    Parameters  :: [parameters()],
+    Result      :: 'ok'.
+
+cancel(Id, Parameters) ->
+    gen_server:call(?SERVER(Id), {cancel, Parameters}).
+
+
 
 % %@doc interface for delete event

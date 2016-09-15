@@ -24,7 +24,7 @@ erlcron_start_stop_test_() ->
                 end},
                 {<<"erlcron gen_server able to stop via ?TESTMODULE:stop(?TESTID)">>,
                     fun() ->
-                        ?assertExit({normal,{gen_server,call,[?TESTSERVER,stop]}}, ?TESTMODULE:stop(?TESTID)),
+                        ok = ?TESTMODULE:stop(?TESTID),
                         ?assertEqual(
                             false,
                             is_pid(whereis(?TESTSERVER))
@@ -33,7 +33,7 @@ erlcron_start_stop_test_() ->
                 {<<"erlcron gen_server able to start and stop via ?TESTMODULE:start_link(?TESTID) / ?TESTMODULE:stop(sync, ?TESTID)">>,
                     fun() ->
                         ?TESTMODULE:start_link(?TESTID),
-                        ?assertExit({normal,{gen_server,call,[?TESTSERVER, stop]}}, ?TESTMODULE:stop(sync, ?TESTID)),
+                        ok = ?TESTMODULE:stop(sync, ?TESTID),
                         ?assertEqual(
                             false,
                             is_pid(whereis(?TESTSERVER))
@@ -121,7 +121,7 @@ eventer_test_ () ->
                         Freq = 2,
                         CountTill = 10,
                         TestMsg = {case1, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
-                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        {'added', _Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
                         Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
                         Await = [TestMsg || _N <- lists:seq(1,CountTill)],
                         ?assertEqual(Await,Data)
@@ -132,7 +132,7 @@ eventer_test_ () ->
                         Freq = 2,
                         CountTill = 3,
                         TestMsg = {case2, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
-                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        {'added', _Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
                         Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
                         Await = [TestMsg || _N <- lists:seq(1,CountTill)],
                         ?assertEqual(Await,Data),
@@ -142,20 +142,122 @@ eventer_test_ () ->
                     fun() ->
                         Freq = 1000,
                         TestMsg = {case3, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
-                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
-
+                        {'added', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
                         EtsData = ets:tab2list(?TESTSERVER),
                         ?assert(is_list(EtsData)),
                         ?assertNotEqual([], EtsData),
-                        
-                        ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        ?assertEqual(3, length(EtsData)),
+                        {'exists', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
                         EtsData2 = ets:tab2list(?TESTSERVER),
                         ?assert(is_list(EtsData2)),
                         ?assertNotEqual([], EtsData2),
                         ?assertEqual(EtsData, EtsData2),
-
-                        {state, ?TESTSERVER, State} = sys:get_state(?TESTSERVER),
-                        ?assertEqual(3, maps:size(State))
+                        ?assertEqual(3, length(EtsData2))
+                end},
+                {<<"Able to delete task via cancel/2 with full parameters">>, 
+                    fun() ->
+                        LoopWait = 20,
+                        Freq = 10,
+                        CountTill = 3,
+                        TestMsg = {case4, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        {'added', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData)),
+                        ?assertNotEqual([], EtsData),
+                        ?assertEqual(4, length(EtsData)),
+                        {'exists', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData2 = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData2)),
+                        ?assertNotEqual([], EtsData2),
+                        ?assertEqual(EtsData, EtsData2),
+                        ?assertEqual(4, length(EtsData2)),
+                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
+                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
+                        ?assertEqual(Await,Data),
+                        [{'canceled', Ref}] = ?TESTMODULE:cancel(?TESTID, [{'freq', Freq}, {'pid', self()}, {'method',info}, {'message',TestMsg}]),
+                        Data2 = recieve_loop([],TestMsg,LoopWait,1,0),
+                        ?assertEqual([], Data2),
+                        EtsData3 = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(3, length(EtsData3))
+                end},
+                {<<"Able to delete task via cancel/2 with less parameter">>, 
+                    fun() ->
+                        LoopWait = 20,
+                        Freq = 10,
+                        CountTill = 3,
+                        TestMsg = {case5, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        {'added', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData)),
+                        ?assertNotEqual([], EtsData),
+                        ?assertEqual(4, length(EtsData)),
+                        {'exists', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData2 = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData2)),
+                        ?assertNotEqual([], EtsData2),
+                        ?assertEqual(EtsData, EtsData2),
+                        ?assertEqual(4, length(EtsData2)),
+                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
+                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
+                        ?assertEqual(Await,Data),
+                        _ = ?TESTMODULE:cancel(?TESTID, [{'freq', Freq}]),
+                        Data2 = recieve_loop([],TestMsg,LoopWait,1,0),
+                        ?assertEqual([], Data2),
+                        EtsData3 = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(3, length(EtsData3)),
+                        _ = ?TESTMODULE:cancel(?TESTID, [{'pid', self()}]),
+                        EtsData4 = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(0, length(EtsData4))
+                end},
+                {<<"Able to delete task via cancel/2 with less parameters">>, 
+                    fun() ->
+                        LoopWait = 20,
+                        Freq = 10,
+                        CountTill = 3,
+                        TestMsg = {case6, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        {'added', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData)),
+                        ?assertNotEqual([], EtsData),
+                        ?assertEqual(1, length(EtsData)),
+                        {'exists', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData2 = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData2)),
+                        ?assertNotEqual([], EtsData2),
+                        ?assertEqual(EtsData, EtsData2),
+                        ?assertEqual(1, length(EtsData2)),
+                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
+                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
+                        ?assertEqual(Await,Data),
+                        [{'canceled', Ref}] = ?TESTMODULE:cancel(?TESTID, [{'method',info}, {'message',TestMsg}]),
+                        Data2 = recieve_loop([],TestMsg,LoopWait,1,0),
+                        ?assertEqual([], Data2),
+                        EtsData3 = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(0, length(EtsData3))
+                end},
+                {<<"When going to terminate erlcron process, must cleanup queue in timer">>,
+                    fun() ->
+                        LoopWait = 20,
+                        Freq = 10,
+                        CountTill = 3,
+                        TestMsg = {case7, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        {'added', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData)),
+                        ?assertNotEqual([], EtsData),
+                        ?assertEqual(1, length(EtsData)),
+                        {'exists', Ref} = ?TESTMODULE:add(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData2 = ets:tab2list(?TESTSERVER),
+                        ?assert(is_list(EtsData2)),
+                        ?assertNotEqual([], EtsData2),
+                        ?assertEqual(EtsData, EtsData2),
+                        ?assertEqual(1, length(EtsData2)),
+                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
+                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
+                        ?assertEqual(Await,Data),
+                        ?TESTMODULE:stop(?TESTID),
+                        Data2 = recieve_loop([],TestMsg,LoopWait,1,0),
+                        ?assertEqual([], Data2)
                 end}
             ]
         }
@@ -172,7 +274,7 @@ disable_output() ->
 stop_server(_) ->
     case whereis(?TESTSERVER) of
         undefined -> ok;
-        _ -> ?assertExit({normal,{gen_server,call,[?TESTSERVER,stop]}}, ?TESTMODULE:stop(?TESTID))
+        _ -> ?TESTMODULE:stop(?TESTID)
     end,
     ok.
 

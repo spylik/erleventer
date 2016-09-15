@@ -1,6 +1,6 @@
 {application,erlcron,
              [{description,[]},
-              {vsn,"0.0.4"},
+              {vsn,"0.0.5"},
               {modules,[]},
               {registered,[]},
               {applications,[kernel,stdlib]},

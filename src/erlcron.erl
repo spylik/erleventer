@@ -3,7 +3,7 @@
 %% @author  Oleksii Semilietov <spylik@gmail.com>
 %%
 %% @doc
-%% Erlcron is the simple OTP periodic job scheduler.
+%% Erlcron is the simple wraper around `timer:send_after` for easy management periodic events.
 %% @end
 %% --------------------------------------------------------------------------------
 

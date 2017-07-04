@@ -23,28 +23,30 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
-% public api 
+% public api
 -export([
         start_link/1,
         stop/1,
         stop/2,
         add/5,
+        add/6,
         cancel/2
     ]).
 
--define(SERVER(Id), 
+-define(SERVER(Id),
     list_to_atom(lists:concat([Id, "_", ?MODULE]))
 ).
 
 -type process()     :: pid() | atom().
 -type msgformat()   :: term().
 -type methods()     :: 'cast' | 'call' | 'info'.
--type parameters()  :: {'freq', pos_integer()} | 
-                       {'pid', process()} | 
+-type parameters()  :: {'freq', pos_integer()} |
+                       {'pid', process()} |
                        {'method', methods()} |
                        {'message', msgformat()}.
 
 -record(events, {
+        tag     :: term() | '_',
         freq    :: pos_integer() | '_',
         pid     :: atom() | pid() | '_',
         method  :: methods() | '_',
@@ -60,13 +62,13 @@
 
 % ----------------------------- gen_server part --------------------------------
 
-% @doc Start copy of erlcron and register it locally as $id_erlcron. 
+% @doc Start copy of erlcron and register it locally as $id_erlcron.
 % Erlcron works in milliseconds.
 % - 1 hour = 3600000
 % - 1 minute = 60000
 % - 1 second = 1000
 -spec start_link(Id) -> Result
-    when 
+    when
         Id :: atom(),
         Result :: 'ignore' | {'error',_} | {'ok',pid()}.
 
@@ -74,7 +76,7 @@ start_link(Id) ->
     gen_server:start_link({local, ?SERVER(Id)}, ?MODULE, Id, []).
 
 % @doc API for stop gen_server. Default is sync call.
--spec stop(Id) -> Result when 
+-spec stop(Id) -> Result when
     Id      :: atom(),
     Result  :: term().
 
@@ -93,14 +95,14 @@ stop(async, Id) ->
     gen_server:cast(?SERVER(Id), stop).
 
 % @doc While init we going to create ets table
--spec init(Id) -> Result when 
+-spec init(Id) -> Result when
     Id      :: atom(),
     Result  :: {'ok', state()}.
 
 init(Id) ->
     EtsName = ?SERVER(Id),
     _Tid = ets:new(EtsName, [set, protected, {keypos, #events.tref}, named_table]),
-    
+
     {ok, #state{
             etsname=EtsName
         }
@@ -111,7 +113,7 @@ init(Id) ->
 % @doc callbacks for gen_server handle_call.
 -spec handle_call(Message, From, State) -> Result when
     Message :: Add | Cancel,
-    Add     :: {'add', Freq, Pid, Method, Message},
+    Add     :: {'add', Freq, Pid, Method, Message, Tag},
     Cancel  :: {'cancel', parameters()},
     Freq    :: pos_integer(),
     Pid     :: process(),
@@ -124,15 +126,16 @@ init(Id) ->
     Result  :: {reply, Reply, State}.
 
 % @doc handle add events
-handle_call({add, Freq, Pid, Method, Message}, _From, State = #state{etsname = EtsName}) ->
-    MS = [{#events{'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'tref' = '_'}, [], ['$_']}],
+handle_call({add, Freq, Pid, Method, Message, Tag}, _From, State = #state{etsname = EtsName}) ->
+    MS = [{#events{'tag' = Tag, 'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'tref' = '_'}, [], ['$_']}],
 
     Reply = case ets:select(EtsName, MS) of
-        [#events{tref = TRef}] -> 
+        [#events{tref = TRef}] ->
             {'exists', TRef};
         [] ->
             {ok, TRef} = cast_task(Freq, Pid, Method, Message),
             Task = #events{
+                tag = Tag,
                 freq = Freq,
                 pid = Pid,
                 method = Method,
@@ -142,32 +145,37 @@ handle_call({add, Freq, Pid, Method, Message}, _From, State = #state{etsname = E
             ets:insert(EtsName, Task),
             {'added',TRef}
     end,
-    
+
     % create new key in timeref map
     {reply, Reply, State};
 
 handle_call({cancel, Parameters}, _From, State = #state{etsname = EtsName}) ->
-    Freq = 
+    Tag =
+        case lists:keyfind('tag', 1, Parameters) of
+            {'tag', Val0} -> Val0;
+            false -> '_'
+        end,
+    Freq =
         case lists:keyfind('freq', 1, Parameters) of
             {'freq', Val1} -> Val1;
             false -> '_'
         end,
-    Pid = 
+    Pid =
         case lists:keyfind('pid', 1, Parameters) of
             {'pid', Val2} -> Val2;
             false -> '_'
         end,
-    Method = 
+    Method =
         case lists:keyfind('method', 1, Parameters) of
             {'method', Val3} -> Val3;
             false -> '_'
         end,
-    Message = 
+    Message =
         case lists:keyfind('message', 1, Parameters) of
             {'message', Val4} -> Val4;
             false -> '_'
         end,
-    MS = [{#events{'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'tref' = '_'}, [], ['$_']}],
+    MS = [{#events{'tag' = Tag, 'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'tref' = '_'}, [], ['$_']}],
     Gone = lists:map(
         fun(#events{tref = TRef}) ->
             _ = timer:cancel(TRef),
@@ -260,7 +268,7 @@ cast_task(Freq, Pid, 'cast', Message) ->
 cast_task(Freq, Pid, 'call', Message) ->
     timer:apply_interval(Freq, gen_server, 'call', [Pid,Message]).
 
-% @doc interface for add new event
+% @doc interface for add new event (notag)
 -spec add(Id, Freq, Pid, Method, Message) -> Result when
     Id      :: atom(),
     Freq    :: pos_integer(),
@@ -268,9 +276,21 @@ cast_task(Freq, Pid, 'call', Message) ->
     Method  :: methods(),
     Message :: msgformat(),
     Result  :: {ok, timer:tref()}.
-
 add(Id, Freq, Pid, Method, Message) ->
-    gen_server:call(?SERVER(Id), {add, Freq, Pid, Method, Message}).
+    add(Id, Freq, Pid, Method, Message, 'undefined').
+
+% @doc interface for add new event
+-spec add(Id, Freq, Pid, Method, Message, Tag) -> Result when
+    Id      :: atom(),
+    Freq    :: pos_integer(),
+    Pid     :: process(),
+    Method  :: methods(),
+    Message :: msgformat(),
+    Tag     :: term(),
+    Result  :: {ok, timer:tref()}.
+
+add(Id, Freq, Pid, Method, Message, Tag) ->
+    gen_server:call(?SERVER(Id), {add, Freq, Pid, Method, Message, Tag}).
 
 % @doc delete
 -spec cancel(Id, Parameters) -> Result when

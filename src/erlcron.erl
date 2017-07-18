@@ -39,14 +39,16 @@
 
 -type process()     :: pid() | atom().
 -type msgformat()   :: term().
+-type tag()         :: term().
 -type methods()     :: 'cast' | 'call' | 'info'.
 -type parameters()  :: {'freq', pos_integer()} |
                        {'pid', process()} |
                        {'method', methods()} |
-                       {'message', msgformat()}.
+                       {'message', msgformat()} |
+                       {'tag', tag()}.
 
 -record(events, {
-        tag     :: term() | '_',
+        tag     :: tag() | '_',
         freq    :: pos_integer() | '_',
         pid     :: atom() | pid() | '_',
         method  :: methods() | '_',

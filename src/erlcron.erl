@@ -30,8 +30,8 @@
         stop/2,
         add/5,
         add/6,
+        add_fun_apply/3,
         add_fun_apply/4,
-        add_fun_apply/5,
         cancel/2
     ]).
 
@@ -132,27 +132,25 @@ add(Id, Freq, Pid, Method, Message, Tag) ->
 
 
 % @doc interface for add new function for pereodic execution
--spec add_fun_apply(Id, Freq, Fun, Arguments) -> Result when
+-spec add_fun_apply(Id, Freq, Fun) -> Result when
     Id          :: atom(),
     Freq        :: pos_integer(),
     Fun         :: fun(),
-    Arguments   :: list(),
     Result      :: {ok, timer:tref()}.
 
-add_fun_apply(Id, Freq, Fun, Arguments) ->
-    add_fun_apply(Id, Freq, Fun, Arguments, 'undefined').
+add_fun_apply(Id, Freq, Fun) ->
+    add_fun_apply(Id, Freq, Fun, 'undefined').
 
 
--spec add_fun_apply(Id, Freq, Fun, Arguments, Tag) -> Result when
+-spec add_fun_apply(Id, Freq, Fun, Tag) -> Result when
     Id          :: atom(),
     Freq        :: pos_integer(),
     Fun         :: fun(),
-    Arguments   :: list(),
     Tag         :: term(),
     Result      :: {ok, timer:tref()}.
 
-add_fun_apply(Id, Freq, Fun, Arguments, Tag) ->
-    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Freq, Fun, Arguments, Tag}).
+add_fun_apply(Id, Freq, Fun, Tag) ->
+    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Freq, Fun, Tag}).
 
 
 % @doc delete
@@ -188,12 +186,11 @@ init(Id) ->
 -spec handle_call(Message, From, State) -> Result when
     Message     :: Add | Cancel,
     Add         :: {'add', Freq, Pid, Method, Message, Tag}
-                 | {'add_fun_apply', Freq, Fun, Arguments, Tag},
+                 | {'add_fun_apply', Freq, Fun, Tag},
     Cancel      :: {'cancel', parameters()},
     Freq        :: pos_integer(),
     Pid         :: process(),
     Fun         :: fun(),
-    Arguments   :: list(),
     Method      :: methods(),
     Message     :: msgformat(),
     From        :: {pid(), Tag},
@@ -227,17 +224,16 @@ handle_call({'add', Freq, Pid, Method, Message, Tag}, _From, State = #state{etsn
     {reply, Reply, State};
 
 
-handle_call({'add_fun_apply', Freq, Fun, Arguments, Tag}, _From, State = #state{etsname = EtsName}) ->
-    MS = [{#events{'freq' = Freq, 'func' = Fun, 'arguments' = Arguments, _ = '_'}, [], ['$_']}],
+handle_call({'add_fun_apply', Freq, Fun, Tag}, _From, State = #state{etsname = EtsName}) ->
+    MS = [{#events{'freq' = Freq, 'func' = Fun, _ = '_'}, [], ['$_']}],
 
     Reply = case ets:select(EtsName, MS) of
         [#events{tref = TRef}] ->
             {'exists', TRef};
         [] ->
-            {ok, TRef} = cast_task(Freq, self(), 'info', {'cast_safe', Fun, Arguments}),
+            {ok, TRef} = cast_task(Freq, self(), 'info', {'cast_safe', Fun}),
             Task = #events{
                 func = Fun,
-                arguments = Arguments,
                 freq = Freq,
                 tref = TRef,
                 tag = Tag
@@ -327,16 +323,16 @@ handle_cast(Msg, State) ->
 
 % @doc callbacks for gen_server handle_info.
 -spec handle_info(Message, State) -> Result when
-    Message :: {'cast' | 'cast_safe', fun(), list()},
+    Message :: {'cast' | 'cast_safe', fun()},
     State   :: term(),
     Result  :: {noreply, State}.
 
-handle_info({'cast', Fun, Arguments}, State) ->
-    _ = erlang:apply(Fun, Arguments),
+handle_info({'cast', Fun}, State) ->
+    _ = erlang:apply(Fun, []),
     {noreply, State};
 
-handle_info({'cast_safe', Fun, Arguments}, State) ->
-    _ = spawn(Fun, Arguments),
+handle_info({'cast_safe', Fun}, State) ->
+    _ = spawn(Fun),
     {noreply, State};
 
 %% handle_info for all other thigs

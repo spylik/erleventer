@@ -1,28 +1,28 @@
--module(erlcron_tests).
+-module(erleventer_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(TESTMODULE, erlcron).
+-define(TESTMODULE, erleventer).
 -define(TESTID, limpopo).
--define(TESTSERVER, limpopo_erlcron).
+-define(TESTSERVER, limpopo_erleventer).
 
 % --------------------------------- fixtures ----------------------------------
 
-erlcron_start_stop_test_() ->
+erleventer_start_stop_test_() ->
     {setup,
         fun disable_output/0,
         fun stop_server/1,
         {inorder,
             [
-                {<<"erlcron gen_server able to start and register with right name">>, 
+                {<<"erleventer gen_server able to start and register with right name">>,
                     fun() ->
                         ?TESTMODULE:start_link(?TESTID),
                         ?assertEqual(
                             true,
                             is_pid(whereis(?TESTSERVER))
-                        ) 
+                        )
                 end},
-                {<<"erlcron gen_server able to stop via ?TESTMODULE:stop(?TESTID)">>,
+                {<<"erleventer gen_server able to stop via ?TESTMODULE:stop(?TESTID)">>,
                     fun() ->
                         ok = ?TESTMODULE:stop(?TESTID),
                         ?assertEqual(
@@ -30,7 +30,7 @@ erlcron_start_stop_test_() ->
                             is_pid(whereis(?TESTSERVER))
                         )
                 end},
-                {<<"erlcron gen_server able to start and stop via ?TESTMODULE:start_link(?TESTID) / ?TESTMODULE:stop(sync, ?TESTID)">>,
+                {<<"erleventer gen_server able to start and stop via ?TESTMODULE:start_link(?TESTID) / ?TESTMODULE:stop(sync, ?TESTID)">>,
                     fun() ->
                         ?TESTMODULE:start_link(?TESTID),
                         ok = ?TESTMODULE:stop(sync, ?TESTID),
@@ -39,7 +39,7 @@ erlcron_start_stop_test_() ->
                             is_pid(whereis(?TESTSERVER))
                         )
                 end},
-                {<<"erlcron able to start and stop via ?TESTMODULE:start_link(Market) ?TESTMODULE:stop(async,Market)">>,
+                {<<"erleventer able to start and stop via ?TESTMODULE:start_link(Market) ?TESTMODULE:stop(async,Market)">>,
                     fun() ->
                         ?TESTMODULE:start_link(?TESTID),
                         ?TESTMODULE:stop(async,?TESTID),
@@ -59,15 +59,15 @@ gen_server_unknown_message_test_ () ->
         fun stop_server/1,
         {inparallel,
             [
-                {<<"gen_server should be registered">>, 
+                {<<"gen_server should be registered">>,
                     fun() ->
                         ?assertEqual(
                             true,
                             is_pid(whereis(?TESTSERVER))
-                        ) 
+                        )
                     end},
 
-                {<<"Ets Table should be present when erlcron started">>,
+                {<<"Ets Table should be present when erleventer started">>,
                     fun() ->
                         ?assertNotEqual(
                            undefined,
@@ -115,7 +115,7 @@ eventer_test_ () ->
         fun stop_server/1,
         {inorder,
             [
-                {<<"Able to create new task and send data">>, 
+                {<<"Able to create new task and send data">>,
                     fun() ->
                         LoopWait = 4,
                         Freq = 2,
@@ -126,7 +126,7 @@ eventer_test_ () ->
                         Await = [TestMsg || _N <- lists:seq(1,CountTill)],
                         ?assertEqual(Await,Data)
                 end},
-                {<<"Able to create new task with new MestMsg">>, 
+                {<<"Able to create new task with new MestMsg">>,
                     fun() ->
                         LoopWait = 4,
                         Freq = 2,
@@ -138,7 +138,7 @@ eventer_test_ () ->
                         ?assertEqual(Await,Data),
                         ok
                 end},
-                {<<"If we call TESTMODULE:add twice with same arguments, it won't create new event in ets and still have only 3 reference in state">>, 
+                {<<"If we call TESTMODULE:add twice with same arguments, it won't create new event in ets and still have only 3 reference in state">>,
                     fun() ->
                         Freq = 1000,
                         TestMsg = {case3, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
@@ -154,7 +154,7 @@ eventer_test_ () ->
                         ?assertEqual(EtsData, EtsData2),
                         ?assertEqual(3, length(EtsData2))
                 end},
-                {<<"Able to delete task via cancel/2 with full parameters">>, 
+                {<<"Able to delete task via cancel/2 with full parameters">>,
                     fun() ->
                         LoopWait = 20,
                         Freq = 10,
@@ -180,7 +180,7 @@ eventer_test_ () ->
                         EtsData3 = ets:tab2list(?TESTSERVER),
                         ?assertEqual(3, length(EtsData3))
                 end},
-                {<<"Able to delete task via cancel/2 with less parameter">>, 
+                {<<"Able to delete task via cancel/2 with less parameter">>,
                     fun() ->
                         LoopWait = 20,
                         Freq = 10,
@@ -209,7 +209,7 @@ eventer_test_ () ->
                         EtsData4 = ets:tab2list(?TESTSERVER),
                         ?assertEqual(0, length(EtsData4))
                 end},
-                {<<"Able to delete task via cancel/2 with less parameters">>, 
+                {<<"Able to delete task via cancel/2 with less parameters">>,
                     fun() ->
                         LoopWait = 20,
                         Freq = 10,
@@ -235,7 +235,7 @@ eventer_test_ () ->
                         EtsData3 = ets:tab2list(?TESTSERVER),
                         ?assertEqual(0, length(EtsData3))
                 end},
-                {<<"When going to terminate erlcron process, must cleanup queue in timer">>,
+                {<<"When going to terminate erleventer process, must cleanup queue in timer">>,
                     fun() ->
                         LoopWait = 20,
                         Freq = 10,
@@ -278,7 +278,7 @@ stop_server(_) ->
     end,
     ok.
 
-start_server() -> 
+start_server() ->
     ?TESTMODULE:start_link(?TESTID).
 
 % recieve loop

@@ -309,17 +309,9 @@ handle_call(Msg, _From, State) ->
 
 % @doc callbacks for gen_server handle_call.
 -spec handle_cast(Message, State) -> Result when
-    Message :: 'stop' | {'cast' | 'cast_safe', fun(), list()},
+    Message :: 'stop',
     State   :: state(),
     Result  :: {noreply, State} | {stop, normal, State}.
-
-handle_cast({'cast', Fun, Arguments}, State) ->
-    _ = erlang:apply(Fun, Arguments),
-    {noreply, State};
-
-handle_cast({'cast_safe', Fun, Arguments}, State) ->
-    _ = spawn(Fun, Arguments),
-    {noreply, State};
 
 % handle_cast for stop
 handle_cast(stop, State) ->
@@ -335,9 +327,17 @@ handle_cast(Msg, State) ->
 
 % @doc callbacks for gen_server handle_info.
 -spec handle_info(Message, State) -> Result when
-    Message :: term(),
+    Message :: {'cast' | 'cast_safe', fun(), list()},
     State   :: term(),
     Result  :: {noreply, State}.
+
+handle_info({'cast', Fun, Arguments}, State) ->
+    _ = erlang:apply(Fun, Arguments),
+    {noreply, State};
+
+handle_info({'cast_safe', Fun, Arguments}, State) ->
+    _ = spawn(Fun, Arguments),
+    {noreply, State};
 
 %% handle_info for all other thigs
 handle_info(Msg, State) ->

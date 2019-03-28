@@ -1,4 +1,4 @@
-PROJECT = erlcron
+PROJECT = erleventer
 
 TEST_ERLC_OPTS += +warn_export_vars +warn_shadow_vars +warn_obsolete_guard +debug_info
 

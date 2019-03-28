@@ -1,4 +1,4 @@
-{application,erlcron,
+{application,erleventer,
              [{description,[]},
               {vsn,"0.0.7"},
               {modules,[]},

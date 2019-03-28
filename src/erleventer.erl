@@ -1,13 +1,13 @@
 %% --------------------------------------------------------------------------------
-%% File:    erlcron.erl
+%% File:    erleventer.erl
 %% @author  Oleksii Semilietov <spylik@gmail.com>
 %%
 %% @doc
-%% Erlcron is the simple wraper around `timer:send_after` for easy management periodic events.
+%% Erleventer is the simple wraper around `timer:send_after` for easy management periodic events.
 %% @end
 %% --------------------------------------------------------------------------------
 
--module(erlcron).
+-module(erleventer).
 
 -define(NOTEST, true).
 -ifdef(TEST).
@@ -70,8 +70,8 @@
 
 % =============================== public api part ===============================
 
-% @doc Start copy of erlcron and register it locally as $id_erlcron.
-% Erlcron works in milliseconds.
+% @doc Start copy of erleventer and register it locally as $id_erleventer.
+% Erleventer works in milliseconds.
 % - 1 hour = 3600000
 % - 1 minute = 60000
 % - 1 second = 1000

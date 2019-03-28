@@ -15,6 +15,7 @@ ttb_last_config
 .DS_Store
 .dialyzer_plt
 erlcron.d
+erleventer.d
 *.beam
 *.plt
 cover/*

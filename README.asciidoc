@@ -1,8 +1,8 @@
-image:https://api.travis-ci.org/spylik/erlcron.svg?branch=develop[title="Build Status", link="https://travis-ci.org/spylik/erlcron"] image:https://codecov.io/gh/spylik/erlcron/branch/develop/graph/badge.svg[title="Codecov", link="https://codecov.io/gh/spylik/erlcron/branches/develop"]
+image:https://api.travis-ci.org/spylik/erleventer.svg?branch=develop[title="Build Status", link="https://travis-ci.org/spylik/erleventer"]  image:https://codecov.io/gh/spylik/erleventer/branch/develop/graph/badge.svg[title="Codecov", link="https://codecov.io/gh/spylik/erleventer/branches/develop"]
 
-= Erlcron
+= Erleventer
 
-Erlcron is the simple wraper around `timer:send_after` for easy management periodic events.
+Erleventer is the simple wraper around `timer:send_after` for easy management periodic events.
 Don't need anymore save in state or somewhere else `timer:tref()` for events - 
-erlcron just keep data of this events together with `timer:tref()` in the ets table and provide simple
+erleventer just keep data of this events together with `timer:tref()` in the ets table and provide simple
 API for manage them.

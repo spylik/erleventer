@@ -47,7 +47,9 @@
                        {'pid', process()} |
                        {'method', methods()} |
                        {'message', msgformat()} |
-                       {'tag', tag()}.
+                       {'tag', tag()} |
+                       {'func', fun()} |
+                       {'arguments', list()}.
 
 -record(events, {
         freq        :: pos_integer() | '_',
@@ -274,7 +276,19 @@ handle_call({cancel, Parameters}, _From, State = #state{etsname = EtsName}) ->
             {'message', Val4} -> Val4;
             false -> '_'
         end,
-    MS = [{#events{'tag' = Tag, 'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'tref' = '_'}, [], ['$_']}],
+    Func =
+        case lists:keyfind('func', 1, Parameters) of
+            {'func', Val5} -> Val5;
+            false -> '_'
+        end,
+    Arguments =
+        case lists:keyfind('arguments', 1, Parameters) of
+            {'arguments', Val6} -> Val6;
+            false -> '_'
+        end,
+
+    MS = [{#events{'tag' = Tag, 'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'func' = Func,
+                'arguments' = Arguments, 'tref' = '_'}, [], ['$_']}],
     Gone = lists:map(
         fun(#events{tref = TRef}) ->
             _ = timer:cancel(TRef),

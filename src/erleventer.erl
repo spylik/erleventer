@@ -51,8 +51,8 @@
                        {'func', fun()} |
                        {'arguments', list()}.
 
--record(events, {
-        freq        :: pos_integer() | '_',
+-record(task, {
+        freq        :: #{pos_integer() := pos_integer()} | '_',
         pid         :: 'undefined' | atom() | pid() | '_',
         method      :: 'undefined' | methods() | '_',
         message     :: 'undefined' | msgformat() | '_',
@@ -61,6 +61,8 @@
         tref        :: timer:tref() | '_',
         tag         :: tag() | '_'
     }).
+
+-type task()  :: #task{}.
 
 -record(state, {
         etsname :: atom()
@@ -173,7 +175,7 @@ cancel(Id, Parameters) ->
 
 init(Id) ->
     EtsName = ?SERVER(Id),
-    _Tid = ets:new(EtsName, [set, protected, {keypos, #events.tref}, named_table]),
+    _Tid = ets:new(EtsName, [set, protected, {keypos, #task.tref}, named_table]),
 
     {ok, #state{
             etsname=EtsName
@@ -196,20 +198,26 @@ init(Id) ->
     From        :: {pid(), Tag},
     Tag         :: term(),
     State       :: state(),
-    Reply       :: {'added', timer:tref()} | {'exists', timer:tref()} | [{'canceled', timer:tref()}] | [],
+    Reply       :: {'added', timer:tref()}
+                 | {'exists', timer:tref()}
+                 | {'re_scheduled', timer:tref()}
+                 | [{'canceled', timer:tref()} | {'re_scheduled', timer:tref()}]
+                 | [],
     Result      :: {reply, Reply, State}.
 
 % @doc handle add events
 handle_call({'add', Freq, Pid, Method, Message, Tag}, _From, State = #state{etsname = EtsName}) ->
-    MS = [{#events{'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, _ = '_'}, [], ['$_']}],
+    MS = [{#task{'pid' = Pid, 'method' = Method, 'message' = Message, _ = '_'}, [], ['$_']}],
+
+    CastFun = fun() -> cast_task(Freq, Pid, Method, Message) end,
 
     Reply = case ets:select(EtsName, MS) of
-        [#events{tref = TRef}] ->
-            {'exists', TRef};
+        [Task] ->
+            add_freq(Task, Freq, CastFun, EtsName);
         [] ->
-            {ok, TRef} = cast_task(Freq, Pid, Method, Message),
-            Task = #events{
-                freq = Freq,
+            {ok, TRef} = erlang:apply(CastFun, []),
+            Task = #task{
+                freq = #{Freq => 1},
                 pid = Pid,
                 method = Method,
                 message = Message,
@@ -225,16 +233,18 @@ handle_call({'add', Freq, Pid, Method, Message, Tag}, _From, State = #state{etsn
 
 
 handle_call({'add_fun_apply', Freq, Fun, Tag}, _From, State = #state{etsname = EtsName}) ->
-    MS = [{#events{'freq' = Freq, 'func' = Fun, _ = '_'}, [], ['$_']}],
+    MS = [{#task{'freq' = Freq, 'func' = Fun, _ = '_'}, [], ['$_']}],
+
+    CastFun = fun() -> cast_task(Freq, self(), 'info', {'cast_safe', Fun}) end,
 
     Reply = case ets:select(EtsName, MS) of
-        [#events{tref = TRef}] ->
-            {'exists', TRef};
+        [Task] ->
+            add_freq(Task, Freq, CastFun, EtsName);
         [] ->
-            {ok, TRef} = cast_task(Freq, self(), 'info', {'cast_safe', Fun}),
-            Task = #events{
+            {ok, TRef} = erlang:apply(CastFun, []),
+            Task = #task{
                 func = Fun,
-                freq = Freq,
+                freq = #{Freq => 1},
                 tref = TRef,
                 tag = Tag
             },
@@ -283,10 +293,10 @@ handle_call({cancel, Parameters}, _From, State = #state{etsname = EtsName}) ->
             false -> '_'
         end,
 
-    MS = [{#events{'tag' = Tag, 'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'func' = Func,
+    MS = [{#task{'tag' = Tag, 'freq' = Freq, 'pid' = Pid, 'method' = Method, 'message' = Message, 'func' = Func,
                 'arguments' = Arguments, 'tref' = '_'}, [], ['$_']}],
     Gone = lists:map(
-        fun(#events{tref = TRef}) ->
+        fun(#task{tref = TRef}) ->
             _ = timer:cancel(TRef),
             ets:delete(EtsName, TRef),
             {'canceled', TRef}
@@ -348,7 +358,7 @@ handle_info(Msg, State) ->
 
 terminate(Reason, State = #state{etsname = EtsName}) ->
     _ = lists:map(
-        fun(#events{tref = TRef}) ->
+        fun(#task{tref = TRef}) ->
             timer:cancel(TRef)
         end, ets:tab2list(EtsName)
     ),
@@ -384,3 +394,50 @@ cast_task(Freq, Pid, 'cast', Message) ->
 
 cast_task(Freq, Pid, 'call', Message) ->
     timer:apply_interval(Freq, gen_server, 'call', [Pid,Message]).
+
+
+% @doc add frequency - reschedule event in case of target freq is less than what we have or update counter
+-spec add_freq(Task, NewFreq, CastFun, EtsName) -> Result when
+    Task    :: task(),
+    NewFreq :: pos_integer(),
+    CastFun :: fun(),
+    EtsName :: atom() | ets:tid(),
+    Result  :: {'exists', timer:tref()}
+            |  {'re_scheduled', timer:tref()}.
+
+add_freq(#task{freq = FreqMap, tref = TRef} = Task, NewFreq, CastFun, EtsName) ->
+    case maps:get(NewFreq, FreqMap, 'undefined') of
+        'undefined' ->
+            case NewFreq < hd(lists:sort(maps:keys(FreqMap))) of
+                true ->
+                    timer:cancel(TRef),
+                    ets:delete(EtsName, TRef),
+                    {ok, NewTRef} = erlang:apply(CastFun, []),
+                    ets:insert(
+                        EtsName,
+                        Task#task{
+                          freq = maps:put(NewFreq, 1, FreqMap),
+                          tref = NewTRef
+                         }
+                    ),
+                    {'re_scheduled', NewTRef};
+                false ->
+                    ets:insert(
+                      EtsName,
+                      Task#task{
+                        freq = maps:put(NewFreq, 1, FreqMap)
+                       }
+                    ),
+                    {'exists', TRef}
+            end;
+        Qty ->
+            ets:insert(
+              EtsName,
+              Task#task{
+                freq = maps:put(NewFreq, Qty + 1, FreqMap)
+               }
+            ),
+            {'exists', TRef}
+    end.
+
+

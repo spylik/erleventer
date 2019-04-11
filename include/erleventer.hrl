@@ -4,7 +4,7 @@
 -type tag()             :: term().
 -type send_method()     :: 'cast' | 'call' | 'info'.
 -type cancel_ops()      :: [
-                            {'freq', frequency()}
+                              {'frequency', frequency()}
                             | {'pid', process()}
                             | {'method', send_method()}
                             | {'message', message()}
@@ -14,7 +14,7 @@
                             | {'tag', tag()}
                         ]
                         | #{
-                            'freq'      => frequency(),
+                            'frequency' => frequency(),
                             'pid'       => process(),
                             'method'    => send_method(),
                             'message'   => message(),
@@ -25,7 +25,7 @@
                         }.
 
 -record(task, {
-        freq        :: #{frequency() := pos_integer()} | '_',
+        frequency   :: #{frequency() := pos_integer()} | '_',
 
         % send message task
         pid         :: 'undefined' | atom() | pid() | '_',
@@ -42,7 +42,7 @@
         arguments   :: 'undefined' | list() | '_',
 
         tref        :: timer:tref() | '_',                  % current tref
-        cast_fun    :: fun(),                               % cast function (runtime helper data)
+        cast_fun    :: fun() | '_',                         % cast function (runtime helper data)
         tag         :: tag() | '_'
     }).
 

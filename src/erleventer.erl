@@ -77,53 +77,53 @@ stop(async, Id) ->
 
 
 % @doc interface for add new send_message event (notag)
--spec add_send_message(Id, Freq, Pid, Method, Message) -> Result when
-    Id      :: atom(),
-    Freq    :: pos_integer(),
-    Pid     :: process(),
-    Method  :: send_method(),
-    Message :: message(),
-    Result  :: {ok, timer:tref()}.
+-spec add_send_message(Id, Frequency, Pid, Method, Message) -> Result when
+    Id          :: atom(),
+    Frequency   :: frequency(),
+    Pid         :: process(),
+    Method      :: send_method(),
+    Message     :: message(),
+    Result      :: {ok, timer:tref()}.
 
-add_send_message(Id, Freq, Pid, Method, Message) ->
-    add_send_message(Id, Freq, Pid, Method, Message, 'undefined').
+add_send_message(Id, Frequency, Pid, Method, Message) ->
+    add_send_message(Id, Frequency, Pid, Method, Message, 'undefined').
 
 
--spec add_send_message(Id, Freq, Pid, Method, Message, Tag) -> Result when
-    Id      :: atom(),
-    Freq    :: pos_integer(),
-    Pid     :: process(),
-    Method  :: send_method(),
-    Message :: message(),
-    Tag     :: term(),
-    Result  :: {ok, timer:tref()}.
+-spec add_send_message(Id, Frequency, Pid, Method, Message, Tag) -> Result when
+    Id          :: atom(),
+    Frequency   :: frequency(),
+    Pid         :: process(),
+    Method      :: send_method(),
+    Message     :: message(),
+    Tag         :: term(),
+    Result      :: {ok, timer:tref()}.
 
-add_send_message(Id, Freq, Pid, Method, Message, Tag) ->
-    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Freq, Pid, Method, Message, Tag}).
+add_send_message(Id, Frequency, Pid, Method, Message, Tag) ->
+    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Pid, Method, Message, Tag}).
 
 
 % @doc interface for add new function for pereodic execution
--spec add_fun_apply(Id, Freq, Fun, Arguments) -> Result when
+-spec add_fun_apply(Id, Frequency, Fun, Arguments) -> Result when
     Id          :: atom(),
-    Freq        :: pos_integer(),
+    Frequency   :: frequency(),
     Fun         :: fun(),
     Arguments   :: list(),
     Result      :: {ok, timer:tref()}.
 
-add_fun_apply(Id, Freq, Arguments, Fun) ->
-    add_fun_apply(Id, Freq, Fun, Arguments, 'undefined').
+add_fun_apply(Id, Frequency, Fun, Arguments) ->
+    add_fun_apply(Id, Frequency, Fun, Arguments, 'undefined').
 
 
--spec add_fun_apply(Id, Freq, Fun, Arguments, Tag) -> Result when
+-spec add_fun_apply(Id, Frequency, Fun, Arguments, Tag) -> Result when
     Id          :: atom(),
-    Freq        :: pos_integer(),
+    Frequency   :: frequency(),
     Fun         :: fun(),
     Arguments   :: list(),
     Tag         :: term(),
     Result      :: {ok, timer:tref()}.
 
-add_fun_apply(Id, Freq, Fun, Arguments, Tag) ->
-    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Freq, Fun, Arguments, Tag}).
+add_fun_apply(Id, Frequency, Fun, Arguments, Tag) ->
+    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Fun, Arguments, Tag}).
 
 
 % @doc delete
@@ -158,10 +158,10 @@ init(Id) ->
 % @doc callbacks for gen_server handle_call.
 -spec handle_call(Message, From, State) -> Result when
     Message     :: Add | Cancel,
-    Add         :: {'add_send_message', Freq, Pid, Method, Message, Tag}
-                 | {'add_fun_apply', Freq, Fun, Arguments, Tag},
+    Add         :: {'add_send_message', Frequency, Pid, Method, Message, Tag}
+                 | {'add_fun_apply', Frequency, Fun, Arguments, Tag},
     Cancel      :: {'cancel', cancel_ops()},
-    Freq        :: pos_integer(),
+    Frequency   :: frequency(),
 
     Pid         :: process(),
     Method      :: send_method(),
@@ -186,17 +186,17 @@ init(Id) ->
     Result      :: {reply, Reply, State}.
 
 % @doc handle add events
-handle_call({'add_send_message', Freq, Pid, Method, Message, Tag}, _From, State = #state{etsname = EtsName} = State) ->
+handle_call({'add_send_message', Frequency, Pid, Method, Message, Tag}, _From, State = #state{etsname = EtsName} = State) ->
     MS = [{#task{'pid' = Pid, 'method' = Method, 'message' = Message, _ = '_'}, [], ['$_']}],
 
     Reply = case ets:select(EtsName, MS) of
         [Task] ->
-            add_freq(Task, Freq, State);
+            add_freq(Task, Frequency, State);
         [] ->
-            CastFun = fun(TargetFreq) -> cast_task(TargetFreq, Pid, Method, Message) end,
-            {ok, TRef} = erlang:apply(CastFun, [Freq]),
+            CastFun = fun(TargetFrequency) -> cast_task(TargetFrequency, Pid, Method, Message) end,
+            {ok, TRef} = erlang:apply(CastFun, [Frequency]),
             Task = #task{
-                freq = #{Freq => 1},
+                frequency = #{Frequency => 1},
                 pid = Pid,
                 method = Method,
                 message = Message,
@@ -210,17 +210,17 @@ handle_call({'add_send_message', Freq, Pid, Method, Message, Tag}, _From, State 
     {reply, Reply, State};
 
 
-handle_call({'add_fun_apply', Freq, Fun, Arguments, Tag}, _From, State = #state{etsname = EtsName} = State) ->
+handle_call({'add_fun_apply', Frequency, Fun, Arguments, Tag}, _From, State = #state{etsname = EtsName} = State) ->
     MS = [{#task{'function' = Fun, 'arguments' = Arguments, _ = '_'}, [], ['$_']}],
 
     Reply = case ets:select(EtsName, MS) of
         [Task] ->
-            add_freq(Task, Freq, State);
+            add_freq(Task, Frequency, State);
         [] ->
-            CastFun = fun(TargetFreq) -> cast_task(TargetFreq, self(), 'info', {'cast_safe', Fun, Arguments}) end,
-            {ok, TRef} = erlang:apply(CastFun, [Freq]),
+            CastFun = fun(TargetFrequency) -> cast_task(TargetFrequency, self(), 'info', {'cast_safe', Fun, Arguments}) end,
+            {ok, TRef} = erlang:apply(CastFun, [Frequency]),
             Task = #task{
-                freq = #{Freq => 1},
+                frequency = #{Frequency => 1},
                 function = Fun,
                 arguments = Arguments,
                 tag = Tag,
@@ -243,18 +243,18 @@ handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = Stat
                 'module' = build_spec_value('module', CancelOps),
                 'arguments' = build_spec_value('arguments', CancelOps),
                 'tag' = build_spec_value('tag', CancelOps),
-                'tref' = '_'
+                _ = '_'
             }, [], ['$_']
           }],
-    Freq = build_spec_value('freq', CancelOps),
+    Frequency = build_spec_value('frequency', CancelOps),
     Gone = lists:map(
         fun
-            (#task{tref = TRef}) when Freq =:= '_' ->
+            (#task{tref = TRef}) when Frequency =:= '_' ->
                 _ = timer:cancel(TRef),
                 ets:delete(EtsName, TRef),
                 {'canceled', TRef};
             (Task) ->
-                remove_freq(Task, Freq, State)
+                remove_freq(Task, Frequency, State)
         end, ets:select(EtsName, MS)
     ), {reply, Gone, State}.
 
@@ -318,42 +318,42 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================= end of gen_server part =========================
 
 % @doc interface for sending message with different methods
--spec cast_task(Freq, Pid, Method, Message) -> Result when
-    Freq    :: frequency(),
+-spec cast_task(Frequency, Pid, Method, Message) -> Result when
+    Frequency    :: frequency(),
     Pid     :: process(),
     Method  :: send_method(),
     Message :: message(),
     Result  :: {ok, timer:tref()}.
 
-cast_task(Freq, Pid, 'info', Message) ->
-    timer:send_interval(Freq, Pid, Message);
+cast_task(Frequency, Pid, 'info', Message) ->
+    timer:send_interval(Frequency, Pid, Message);
 
-cast_task(Freq, Pid, 'cast', Message) ->
-    timer:apply_interval(Freq, gen_server, 'cast', [Pid,Message]);
+cast_task(Frequency, Pid, 'cast', Message) ->
+    timer:apply_interval(Frequency, gen_server, 'cast', [Pid,Message]);
 
-cast_task(Freq, Pid, 'call', Message) ->
-    timer:apply_interval(Freq, gen_server, 'call', [Pid,Message]).
+cast_task(Frequency, Pid, 'call', Message) ->
+    timer:apply_interval(Frequency, gen_server, 'call', [Pid,Message]).
 
 
 % @doc add frequency - reschedule event in case of target freq is less than what we have or update counter
--spec add_freq(Task, NewFreq, State) -> Result when
+-spec add_freq(Task, NewFrequency, State) -> Result when
     Task    :: task(),
-    NewFreq :: frequency(),
+    NewFrequency :: frequency(),
     State   :: state(),
     Result  :: {'exists', timer:tref()}
             |  {'re_scheduled', timer:tref()}.
 
-add_freq(#task{freq = FreqMap, tref = TRef} = Task, NewFreq, #state{etsname = EtsName}) ->
-    case maps:get(NewFreq, FreqMap, 'undefined') of
+add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #state{etsname = EtsName}) ->
+    case maps:get(NewFrequency, FrequencyMap, 'undefined') of
         'undefined' ->
-            case NewFreq < hd(lists:sort(maps:keys(FreqMap))) of
+            case NewFrequency < hd(lists:sort(maps:keys(FrequencyMap))) of
                 true ->
-                    NewTRef = recast(Task, NewFreq),
+                    NewTRef = recast(Task, NewFrequency),
                     ets:delete(EtsName, TRef),
                     ets:insert(
                         EtsName,
                         Task#task{
-                          freq = maps:put(NewFreq, 1, FreqMap),
+                          frequency = maps:put(NewFrequency, 1, FrequencyMap),
                           tref = NewTRef
                          }
                     ),
@@ -362,7 +362,7 @@ add_freq(#task{freq = FreqMap, tref = TRef} = Task, NewFreq, #state{etsname = Et
                     ets:insert(
                       EtsName,
                       Task#task{
-                        freq = maps:put(NewFreq, 1, FreqMap)
+                        frequency = maps:put(NewFrequency, 1, FrequencyMap)
                        }
                     ),
                     {'exists', TRef}
@@ -371,7 +371,7 @@ add_freq(#task{freq = FreqMap, tref = TRef} = Task, NewFreq, #state{etsname = Et
             ets:insert(
               EtsName,
               Task#task{
-                freq = maps:put(NewFreq, Qty + 1, FreqMap)
+                frequency = maps:put(NewFrequency, Qty + 1, FrequencyMap)
                }
             ),
             {'exists', TRef}
@@ -379,75 +379,75 @@ add_freq(#task{freq = FreqMap, tref = TRef} = Task, NewFreq, #state{etsname = Et
 
 
 % @doc recast task with new frequency
--spec recast(Task, NewFreq) -> Result when
-      Task      :: task(),
-      NewFreq   :: frequency(),
-      Result    :: timer:tref().
+-spec recast(Task, NewFrequency) -> Result when
+      Task          :: task(),
+      NewFrequency  :: frequency(),
+      Result        :: timer:tref().
 
-recast(#task{cast_fun = CastFun, tref = TRef}, NewFreq) ->
-    timer:cancel(TRef),
-    {ok, NewTRef} = erlang:apply(CastFun, [NewFreq]),
+recast(#task{cast_fun = CastFun, tref = TRef}, NewFrequency) ->
+    _ = timer:cancel(TRef),
+    {ok, NewTRef} = erlang:apply(CastFun, [NewFrequency]),
     NewTRef.
 
 
 % @doc remove frequency - reschedule event in case of target freq is less than what we have or update counter
--spec remove_freq(Task, FreqToDelete, State) -> Result when
-    Task            :: task(),
-    FreqToDelete    :: frequency(),
-    State           :: state(),
-    Result          :: {'not_found', frequency()}
-                    |  {'canceled', timer:tref()}
-                    |  {'re_scheduled', frequency(), timer:tref()}
-                    |  {'frequency_removed', frequency()}.
+-spec remove_freq(Task, FrequencyToDelete, State) -> Result when
+    Task                :: task(),
+    FrequencyToDelete   :: frequency(),
+    State               :: state(),
+    Result              :: {'not_found', frequency()}
+                        |  {'canceled', timer:tref()}
+                        |  {'re_scheduled', frequency(), timer:tref()}
+                        |  {'frequency_removed', frequency()}.
 
-remove_freq(#task{freq = FreqMap, tref = TRef} = Task, FreqToDelete, #state{etsname = EtsName}) ->
-    case maps:get(FreqToDelete, FreqMap, 'undefined') of
+remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDelete, #state{etsname = EtsName}) ->
+    case maps:get(FrequencyToDelete, FrequencyMap, 'undefined') of
         'undefined' ->
-            {'not_found', FreqToDelete};
+            {'not_found', FrequencyToDelete};
         1 ->
-            NeedRescedule = lists:min(maps:keys(FreqMap)) =:= FreqToDelete,
+            NeedRescedule = lists:min(maps:keys(FrequencyMap)) =:= FrequencyToDelete,
             case NeedRescedule of
-                true when map_size(FreqMap) =:= 1 ->
+                true when map_size(FrequencyMap) =:= 1 ->
                     _ = timer:cancel(TRef),
                     _ = ets:delete(EtsName, TRef),
                     {'canceled', TRef};
                 true ->
                     _ = timer:cancel(TRef),
-                    NewFreqMap = maps:remove(FreqToDelete, FreqMap),
-                    NewFreq = lists:min(maps:keys(FreqMap)),
-                    NewTRef = recast(Task, NewFreq),
+                    NewFrequencyMap = maps:remove(FrequencyToDelete, FrequencyMap),
+                    NewFrequency = lists:min(maps:keys(FrequencyMap)),
+                    NewTRef = recast(Task, NewFrequency),
                     _ = ets:delete(EtsName, TRef),
                     _ = ets:insert(
                         EtsName,
                         Task#task{
-                          freq = NewFreqMap,
+                          frequency = NewFrequencyMap,
                           tref = NewTRef
                          }
                     ),
-                    {'re_scheduled', NewFreq, NewTRef};
+                    {'re_scheduled', NewFrequency, NewTRef};
                 false ->
                     _ = ets:insert(
                       EtsName,
                       Task#task{
-                        freq = maps:remove(FreqToDelete, FreqMap)
+                        frequency = maps:remove(FrequencyToDelete, FrequencyMap)
                        }
                     ),
-                    {'frequency_removed', FreqToDelete}
+                    {'frequency_removed', FrequencyToDelete}
             end;
         Qty ->
             _ = ets:insert(
               EtsName,
               Task#task{
-                freq = maps:put(FreqToDelete, Qty - 1, FreqMap)
+                frequency = maps:put(FrequencyToDelete, Qty - 1, FrequencyMap)
                }
             ),
-            {'frequency_removed', FreqToDelete}
+            {'frequency_removed', FrequencyToDelete}
     end.
 
 
 % @doc build value by given key for matchspec
 -spec build_spec_value(Key, CancelOps) -> Result when
-        Key         :: 'freq' | 'pid' | 'method' | 'message' | 'function' | 'module' | 'arguments' | 'tag',
+        Key         :: 'frequency' | 'pid' | 'method' | 'message' | 'function' | 'module' | 'arguments' | 'tag',
         CancelOps   :: cancel_ops(),
         Result      :: '_' | term().
 

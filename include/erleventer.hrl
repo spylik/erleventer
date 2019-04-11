@@ -1,4 +1,4 @@
--type frequency()       :: pos_ingeger().
+-type frequency()       :: pos_integer().
 -type process()         :: pid() | atom().
 -type message()         :: term().
 -type tag()             :: term().
@@ -35,9 +35,8 @@
         % fun apply task
         function    :: 'undefined' | fun() | '_',
 
-        % mfa apply task
+        % mfa apply task adding module
         module      :: 'undefined' | module() | '_',
-        function    :: 'undefined' | atom() | '_',
 
         % argument for fun / mfa apply task
         arguments   :: 'undefined' | list() | '_',

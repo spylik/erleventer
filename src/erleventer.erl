@@ -30,8 +30,8 @@
         stop/2,
         add_send_message/5,
         add_send_message/6,
-        add_fun_apply/3,
         add_fun_apply/4,
+        add_fun_apply/5,
         cancel/2
     ]).
 
@@ -107,7 +107,7 @@ add_send_message(Id, Freq, Pid, Method, Message, Tag) ->
     Id          :: atom(),
     Freq        :: pos_integer(),
     Fun         :: fun(),
-    Arguments   :: [term()],
+    Arguments   :: list(),
     Result      :: {ok, timer:tref()}.
 
 add_fun_apply(Id, Freq, Arguments, Fun) ->
@@ -118,7 +118,7 @@ add_fun_apply(Id, Freq, Arguments, Fun) ->
     Id          :: atom(),
     Freq        :: pos_integer(),
     Fun         :: fun(),
-    Arguments   :: [term()],
+    Arguments   :: list(),
     Tag         :: term(),
     Result      :: {ok, timer:tref()}.
 
@@ -129,7 +129,7 @@ add_fun_apply(Id, Freq, Fun, Arguments, Tag) ->
 % @doc delete
 -spec cancel(Id, Parameters) -> Result when
     Id          :: atom(),
-    Parameters  :: [parameters()],
+    Parameters  :: [cancel_ops()],
     Result      :: 'ok'.
 
 cancel(Id, Parameters) ->
@@ -160,19 +160,28 @@ init(Id) ->
     Message     :: Add | Cancel,
     Add         :: {'add_send_message', Freq, Pid, Method, Message, Tag}
                  | {'add_fun_apply', Freq, Fun, Arguments, Tag},
-    Cancel      :: {'cancel', parameters()},
+    Cancel      :: {'cancel', cancel_ops()},
     Freq        :: pos_integer(),
+
     Pid         :: process(),
-    Fun         :: fun(),
     Method      :: send_method(),
     Message     :: message(),
+
+    Fun         :: fun(),
+    Arguments   :: list(),
+
     From        :: {pid(), Tag},
     Tag         :: term(),
     State       :: state(),
     Reply       :: {'added', timer:tref()}
                  | {'exists', timer:tref()}
                  | {'re_scheduled', timer:tref()}
-                 | [{'canceled', timer:tref()} | {'re_scheduled', timer:tref()}]
+                 | [
+                       {'not_found', frequency()}
+                     | {'canceled', timer:tref()}
+                     | {'re_scheduled', frequency(), timer:tref()}
+                     | {'frequency_removed', frequency()}
+                   ]
                  | [],
     Result      :: {reply, Reply, State}.
 
@@ -227,7 +236,6 @@ handle_call({'add_fun_apply', Freq, Fun, Arguments, Tag}, _From, State = #state{
 handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = State) ->
     MS = [{
             #task{
-                'tag' = build_spec_value('tag', CancelOps),
                 'pid' = build_spec_value('pid', CancelOps),
                 'method' = build_spec_value('method', CancelOps),
                 'message' = build_spec_value('message', CancelOps),
@@ -241,20 +249,15 @@ handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = Stat
     Freq = build_spec_value('freq', CancelOps),
     Gone = lists:map(
         fun
-            (#task{tref = TRef} when Freq =:= '_') ->
+            (#task{tref = TRef}) when Freq =:= '_' ->
                 _ = timer:cancel(TRef),
                 ets:delete(EtsName, TRef),
                 {'canceled', TRef};
             (Task) ->
-                remove_freq(Task, FreqToDelete, State)
+                remove_freq(Task, Freq, State)
         end, ets:select(EtsName, MS)
-    ), {reply, Gone, State};
+    ), {reply, Gone, State}.
 
-
-% handle_call for all other thigs
-handle_call(Msg, _From, State) ->
-    ?undefined(Msg),
-    {reply, unmatched, State}.
 %-----------end of handle_call-------------
 
 
@@ -268,30 +271,21 @@ handle_call(Msg, _From, State) ->
 
 % handle_cast for stop
 handle_cast(stop, State) ->
-    {stop, normal, State};
-
-% handle_cast for unexpected things
-handle_cast(Msg, State) ->
-    ?undefined(Msg),
-    {noreply, State}.
+    {stop, normal, State}.
 %-----------end of handle_cast-------------
 
 %--------------handle_info-----------------
 
 % @doc callbacks for gen_server handle_info.
 -spec handle_info(Message, State) -> Result when
-    Message :: {'cast_safe', fun(), [term()]},
+    Message :: {'cast_safe', fun(), list()},
     State   :: term(),
     Result  :: {noreply, State}.
 
 handle_info({'cast_safe', Fun, Arguments}, State) ->
-    _ = spawn(fun() -> erlang:apply(Fun, Arguments)),
-    {noreply, State};
-
-%% handle_info for all other thigs
-handle_info(Msg, State) ->
-    ?undefined(Msg),
+    _ = spawn(fun() -> erlang:apply(Fun, Arguments) end),
     {noreply, State}.
+
 %-----------end of handle_info-------------
 
 
@@ -349,7 +343,7 @@ cast_task(Freq, Pid, 'call', Message) ->
     Result  :: {'exists', timer:tref()}
             |  {'re_scheduled', timer:tref()}.
 
-add_freq(#task{freq = FreqMap, cast_fun = CastFun, tref = TRef} = Task, NewFreq, #state{etsname = EtsName}) ->
+add_freq(#task{freq = FreqMap, tref = TRef} = Task, NewFreq, #state{etsname = EtsName}) ->
     case maps:get(NewFreq, FreqMap, 'undefined') of
         'undefined' ->
             case NewFreq < hd(lists:sort(maps:keys(FreqMap))) of
@@ -404,9 +398,9 @@ recast(#task{cast_fun = CastFun, tref = TRef}, NewFreq) ->
     Result          :: {'not_found', frequency()}
                     |  {'canceled', timer:tref()}
                     |  {'re_scheduled', frequency(), timer:tref()}
-                    |  {'frequency_removed', frequency()}
+                    |  {'frequency_removed', frequency()}.
 
-remove_freq(#task{freq = FreqMap, cast_fun = CastFun, tref = TRef} = Task, FreqToDelete, #state{etsname = EtsName}) ->
+remove_freq(#task{freq = FreqMap, tref = TRef} = Task, FreqToDelete, #state{etsname = EtsName}) ->
     case maps:get(FreqToDelete, FreqMap, 'undefined') of
         'undefined' ->
             {'not_found', FreqToDelete};
@@ -414,16 +408,16 @@ remove_freq(#task{freq = FreqMap, cast_fun = CastFun, tref = TRef} = Task, FreqT
             NeedRescedule = lists:min(maps:keys(FreqMap)) =:= FreqToDelete,
             case NeedRescedule of
                 true when map_size(FreqMap) =:= 1 ->
-                    timer:cancel(TRef),
-                    ets:delete(EtsName, TRef),
+                    _ = timer:cancel(TRef),
+                    _ = ets:delete(EtsName, TRef),
                     {'canceled', TRef};
                 true ->
-                    timer:cancel(TRef),
+                    _ = timer:cancel(TRef),
                     NewFreqMap = maps:remove(FreqToDelete, FreqMap),
-                    NewFreq = lists:min(maps:keys(FreqMap))
+                    NewFreq = lists:min(maps:keys(FreqMap)),
                     NewTRef = recast(Task, NewFreq),
-                    ets:delete(EtsName, TRef),
-                    ets:insert(
+                    _ = ets:delete(EtsName, TRef),
+                    _ = ets:insert(
                         EtsName,
                         Task#task{
                           freq = NewFreqMap,
@@ -432,29 +426,30 @@ remove_freq(#task{freq = FreqMap, cast_fun = CastFun, tref = TRef} = Task, FreqT
                     ),
                     {'re_scheduled', NewFreq, NewTRef};
                 false ->
-                    ets:insert(
+                    _ = ets:insert(
                       EtsName,
                       Task#task{
                         freq = maps:remove(FreqToDelete, FreqMap)
                        }
                     ),
-                    {'exists', TRef}
+                    {'frequency_removed', FreqToDelete}
             end;
         Qty ->
-            ets:insert(
+            _ = ets:insert(
               EtsName,
               Task#task{
-                freq = maps:put(NewFreq, Qty + 1, FreqMap)
+                freq = maps:put(FreqToDelete, Qty - 1, FreqMap)
                }
             ),
-            {'exists', TRef}
+            {'frequency_removed', FreqToDelete}
     end.
 
 
 % @doc build value by given key for matchspec
 -spec build_spec_value(Key, CancelOps) -> Result when
         Key         :: 'freq' | 'pid' | 'method' | 'message' | 'function' | 'module' | 'arguments' | 'tag',
-        CancelOps   :: cancel_ops().
+        CancelOps   :: cancel_ops(),
+        Result      :: '_' | term().
 
 build_spec_value(Key, CancelOps) when is_list(CancelOps) ->
         case lists:keyfind(Key, 1, CancelOps) of

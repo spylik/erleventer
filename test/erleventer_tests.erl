@@ -1,14 +1,13 @@
 -module(erleventer_tests).
 
 -include_lib("eunit/include/eunit.hrl").
-
 -define(TESTMODULE, erleventer).
 -define(TESTID, limpopo).
 -define(TESTSERVER, limpopo_erleventer).
 
 % --------------------------------- fixtures ----------------------------------
 
-erleventer_start_stop_test_() ->
+erleventer_start_stop_tes() ->
     {setup,
         fun disable_output/0,
         fun stop_server/1,
@@ -82,49 +81,45 @@ eventer_test_() ->
                         Await = [TestMsg || _N <- lists:seq(1,CountTill)],
                         ?assertEqual(Await,Data),
                         ok
+                end},
+                {<<"If we call TESTMODULE:add twice with same arguments, it won't create new event in ets and still have only 3 reference in state">>,
+                    fun() ->
+                        Freq = 1000,
+                        TestMsg = {case3, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        {'added', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(3, length(EtsData)),
+                        {'exists', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData2 = ets:tab2list(?TESTSERVER),
+                        ?assertNotEqual(EtsData, EtsData2),
+                        ?assertEqual(3, length(EtsData2)),
+
+                        [{'frequency_removed', Freq}] = ?TESTMODULE:cancel(?TESTID, [{'frequency', Freq}, {'pid', self()}, {'method',info}, {'message',TestMsg}]),
+                        EtsData3 = ets:tab2list(?TESTSERVER),
+                        ?assertNotEqual(EtsData2, EtsData3),
+                        ?assertEqual(3, length(EtsData3)),
+                        [{'cancelled', Ref}] = ?TESTMODULE:cancel(?TESTID, [{'frequency', Freq}, {'pid', self()}, {'method',info}, {'message',TestMsg}]),
+                        EtsData4 = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(2, length(EtsData4))
+                end},
+                {<<"Able to delete task via cancel/2 with full parameters">>,
+                    fun() ->
+                        LoopWait = 20,
+                        Freq = 10,
+                        CountTill = 3,
+                        TestMsg = {case4, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
+                        {'added', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
+                        EtsData = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(3, length(EtsData)),
+                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
+                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
+                        ?assertEqual(Await,Data),
+                        [{'cancelled', Ref}] = ?TESTMODULE:cancel(?TESTID, [{'frequency', Freq}, {'pid', self()}, {'method',info}, {'message',TestMsg}]),
+                        Data2 = recieve_loop([],TestMsg,LoopWait,1,0),
+                        ?assertEqual([], Data2),
+                        EtsData3 = ets:tab2list(?TESTSERVER),
+                        ?assertEqual(2, length(EtsData3))
                 end}
-%                {<<"If we call TESTMODULE:add twice with same arguments, it won't create new event in ets and still have only 3 reference in state">>,
-%                    fun() ->
-%                        Freq = 1000,
-%                        TestMsg = {case3, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
-%                        {'added', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
-%                        EtsData = ets:tab2list(?TESTSERVER),
-%                        ?assert(is_list(EtsData)),
-%                        ?assertNotEqual([], EtsData),
-%                        ?assertEqual(3, length(EtsData)),
-%                        {'exists', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
-%                        EtsData2 = ets:tab2list(?TESTSERVER),
-%                        ?assert(is_list(EtsData2)),
-%                        ?assertNotEqual([], EtsData2),
-%                        ?assertEqual(EtsData, EtsData2),
-%                        ?assertEqual(3, length(EtsData2))
-%                end}
-%                {<<"Able to delete task via cancel/2 with full parameters">>,
-%                    fun() ->
-%                        LoopWait = 20,
-%                        Freq = 10,
-%                        CountTill = 3,
-%                        TestMsg = {case4, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
-%                        {'added', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
-%                        EtsData = ets:tab2list(?TESTSERVER),
-%                        ?assert(is_list(EtsData)),
-%                        ?assertNotEqual([], EtsData),
-%                        ?assertEqual(4, length(EtsData)),
-%                        {'exists', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
-%                        EtsData2 = ets:tab2list(?TESTSERVER),
-%                        ?assert(is_list(EtsData2)),
-%                        ?assertNotEqual([], EtsData2),
-%                        ?assertEqual(EtsData, EtsData2),
-%                        ?assertEqual(4, length(EtsData2)),
-%                        Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
-%                        Await = [TestMsg || _N <- lists:seq(1,CountTill)],
-%                        ?assertEqual(Await,Data),
-%                        [{'canceled', Ref}] = ?TESTMODULE:cancel(?TESTID, [{'freq', Freq}, {'pid', self()}, {'method',info}, {'message',TestMsg}]),
-%                        Data2 = recieve_loop([],TestMsg,LoopWait,1,0),
-%                        ?assertEqual([], Data2),
-%                        EtsData3 = ets:tab2list(?TESTSERVER),
-%                        ?assertEqual(3, length(EtsData3))
-%                end}
 %                {<<"Able to delete task via cancel/2 with less parameter">>,
 %                    fun() ->
 %                        LoopWait = 20,

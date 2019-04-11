@@ -15,6 +15,7 @@
 -endif.
 
 -include("erleventer.hrl").
+-include("deps/teaser/include/utils.hrl"). % debug only
 
 % gen server is here
 -behaviour(gen_server).
@@ -39,7 +40,7 @@
     list_to_atom(lists:concat([Id, "_", ?MODULE]))
 ).
 
-% =============================== public api part ===============================
+% ============================== public api part ===============================
 
 % @doc Start copy of erleventer and register it locally as $id_erleventer.
 % Erleventer works in milliseconds scope.
@@ -126,7 +127,7 @@ add_fun_apply(Id, Frequency, Fun, Arguments, Tag) ->
     gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Fun, Arguments, Tag}).
 
 
-% @doc delete
+% @doc interface for delete event
 -spec cancel(Id, Parameters) -> Result when
     Id          :: atom(),
     Parameters  :: [cancel_ops()],
@@ -135,9 +136,9 @@ add_fun_apply(Id, Frequency, Fun, Arguments, Tag) ->
 cancel(Id, Parameters) ->
     gen_server:call(?SERVER(Id), {cancel, Parameters}).
 
+% -------------------------- end of public api part ----------------------------
 
-% %@doc interface for delete event
-
+% ============================== gen_server part ===============================
 
 % @doc While init we going to create ets table
 -spec init(Id) -> Result when
@@ -178,7 +179,7 @@ init(Id) ->
                  | {'re_scheduled', timer:tref()}
                  | [
                        {'not_found', frequency()}
-                     | {'canceled', timer:tref()}
+                     | {'cancelled', timer:tref()}
                      | {'re_scheduled', frequency(), timer:tref()}
                      | {'frequency_removed', frequency()}
                    ]
@@ -234,6 +235,7 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Tag}, _From, State = #s
 
 
 handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = State) ->
+    ?here,
     MS = [{
             #task{
                 'pid' = build_spec_value('pid', CancelOps),
@@ -250,9 +252,10 @@ handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = Stat
     Gone = lists:map(
         fun
             (#task{tref = TRef}) when Frequency =:= '_' ->
+                ?here,
                 _ = timer:cancel(TRef),
                 ets:delete(EtsName, TRef),
-                {'canceled', TRef};
+                {'cancelled', TRef};
             (Task) ->
                 remove_freq(Task, Frequency, State)
         end, ets:select(EtsName, MS)
@@ -315,7 +318,9 @@ terminate(Reason, State = #state{etsname = EtsName}) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-% ============================= end of gen_server part =========================
+% ----------------------- end of gen_server part -------------------------------
+
+% ============================= INTERNALS ======================================
 
 % @doc interface for sending message with different methods
 -spec cast_task(Frequency, Pid, Method, Message) -> Result when
@@ -396,11 +401,12 @@ recast(#task{cast_fun = CastFun, tref = TRef}, NewFrequency) ->
     FrequencyToDelete   :: frequency(),
     State               :: state(),
     Result              :: {'not_found', frequency()}
-                        |  {'canceled', timer:tref()}
+                        |  {'cancelled', timer:tref()}
                         |  {'re_scheduled', frequency(), timer:tref()}
                         |  {'frequency_removed', frequency()}.
 
 remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDelete, #state{etsname = EtsName}) ->
+    ?here,
     case maps:get(FrequencyToDelete, FrequencyMap, 'undefined') of
         'undefined' ->
             {'not_found', FrequencyToDelete};
@@ -410,7 +416,7 @@ remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDele
                 true when map_size(FrequencyMap) =:= 1 ->
                     _ = timer:cancel(TRef),
                     _ = ets:delete(EtsName, TRef),
-                    {'canceled', TRef};
+                    {'cancelled', TRef};
                 true ->
                     _ = timer:cancel(TRef),
                     NewFrequencyMap = maps:remove(FrequencyToDelete, FrequencyMap),

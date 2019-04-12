@@ -4,6 +4,11 @@
 %%
 %% @doc
 %% Erleventer is the simple wraper around `timer:send_after` for easy management periodic events.
+%% todo:
+%% 1. rid from timer, switch to erlang:send_after
+%% 2. track last_event_time
+%% 3. during changing frequency calculate time for the next event based on NewFreq and last_event_time
+%% 4. more flexible api for registering name
 %% @end
 %% --------------------------------------------------------------------------------
 
@@ -15,7 +20,6 @@
 -endif.
 
 -include("erleventer.hrl").
--include("deps/teaser/include/utils.hrl"). % debug only
 
 % gen server is here
 -behaviour(gen_server).
@@ -323,11 +327,11 @@ code_change(_OldVsn, State, _Extra) ->
 
 % @doc interface for sending message with different methods
 -spec cast_task(Frequency, Pid, Method, Message) -> Result when
-    Frequency    :: frequency(),
-    Pid     :: process(),
-    Method  :: send_method(),
-    Message :: message(),
-    Result  :: {ok, timer:tref()}.
+    Frequency   :: frequency(),
+    Pid         :: process(),
+    Method      :: send_method(),
+    Message     :: message(),
+    Result      :: {ok, timer:tref()}.
 
 cast_task(Frequency, Pid, 'info', Message) ->
     timer:send_interval(Frequency, Pid, Message);
@@ -420,7 +424,7 @@ remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDele
                 true ->
                     _ = timer:cancel(TRef),
                     NewFrequencyMap = maps:remove(FrequencyToDelete, FrequencyMap),
-                    NewFrequency = lists:min(maps:keys(FrequencyMap)),
+                    NewFrequency = lists:min(maps:keys(NewFrequencyMap)),
                     NewTRef = recast(Task, NewFrequency),
                     _ = ets:delete(EtsName, TRef),
                     _ = ets:insert(

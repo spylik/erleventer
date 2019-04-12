@@ -5,6 +5,8 @@
 -define(TESTID, limpopo).
 -define(TESTSERVER, limpopo_erleventer).
 
+-export([add_to_ets/1]).
+
 % --------------------------------- fixtures ----------------------------------
 
 erleventer_start_stop_test_() ->
@@ -126,7 +128,7 @@ eventer_seq_test_() ->
                         Freq = 10,
                         CountTill = 3,
                         TestMsg = {case5, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
-                        {'added', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
+                        {'added', _Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
                         EtsData = ets:tab2list(?TESTSERVER),
                         ?assertEqual(3, length(EtsData)),
                         Data = recieve_loop([],TestMsg,LoopWait,CountTill,0),
@@ -166,7 +168,7 @@ eventer_seq_test_() ->
                         Freq = 10,
                         CountTill = 3,
                         TestMsg = {case7, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
-                        {'added', Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
+                        {'added', _Ref} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
                         EtsData = ets:tab2list(?TESTSERVER),
                         ?assertEqual(1, length(EtsData)),
                         {'frequency_counter_updated', Freq, 2} = ?TESTMODULE:add_send_message(?TESTID, Freq, self(), info, TestMsg),
@@ -184,6 +186,122 @@ eventer_seq_test_() ->
         }
     }.
 
+frequencer_test_() ->
+     {setup,
+        fun setup_start/0,
+        fun stop_server/1,
+        {inparallel,
+            [
+                 {<<"Simply periodic apply fun()">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 10, fun(Table) -> erleventer_tests:add_to_ets(Table) end, [Tid], Tag),
+                        timer:sleep(25),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag}),
+                        ?assertEqual(2, length(ets:tab2list(Tid)))
+                    end
+                 },
+                 {<<"Simply periodic apply fun() with wait after cancel">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 10, fun(Table) -> erleventer_tests:add_to_ets(Table) end, [Tid], Tag),
+                        timer:sleep(25),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag}),
+                        timer:sleep(25),
+                        ?assertEqual(2, length(ets:tab2list(Tid)))
+                    end
+                 },
+                 {<<"Simply periodic apply fun module:function/arity">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 10, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(25),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag}),
+                        ?assertEqual(2, length(ets:tab2list(Tid)))
+                    end
+                 },
+                 {<<"Simply periodic apply fun module:function/arity. Trying to cancel some unexistent freq">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 10, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(22),
+                        ?assertEqual(2, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 100}),
+                        timer:sleep(22),
+                        ?assertEqual(4, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 10}),
+                        timer:sleep(22),
+                        ?assertEqual(4, length(ets:tab2list(Tid)))
+                    end
+                 },
+                 {<<"Add frequency for apply (<current) - lead to changing freq. First cancel higher">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 10, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(25),
+                        ?assertEqual(2, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 5, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(27),
+                        ?assertEqual(7, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 10}),
+                        timer:sleep(15),
+                        ?assertEqual(10, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 5}),
+                        timer:sleep(25),
+                        ?assertEqual(10, length(ets:tab2list(Tid)))
+                    end
+                 },
+                 {<<"Add frequency for apply (<current) - lead to changing freq. First cancel lower">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 10, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(25),
+                        ?assertEqual(2, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 5, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(27),
+                        ?assertEqual(7, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 5}),
+                        timer:sleep(17),
+                        ?assertEqual(8, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 10}),
+                        timer:sleep(25),
+                        ?assertEqual(8, length(ets:tab2list(Tid)))
+                    end
+                 },
+                 {<<"Add frequency for apply (>current). First cancel lower">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 5, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(26),
+                        ?assertEqual(5, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:add_fun_apply(?TESTID, 10, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
+                        timer:sleep(26),
+                        ?assertEqual(10, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 5}),
+                        timer:sleep(25),
+                        ?assertEqual(12, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 10}),
+                        timer:sleep(25),
+                        ?assertEqual(12, length(ets:tab2list(Tid)))
+                    end
+                 }
+
+
+
+
+            ]
+        }
+     }.
+
+add_to_ets(Tid) ->
+    ets:insert(Tid, {erlang:make_ref()}).
 
 setup_start() ->
     disable_output(),

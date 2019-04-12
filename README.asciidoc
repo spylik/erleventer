@@ -2,7 +2,4 @@ image:https://api.travis-ci.org/spylik/erleventer.svg?branch=master[title="Build
 
 = Erleventer
 
-Erleventer is the simple wraper around `timer:send_after` for easy management periodic events.
-Don't need anymore save in state or somewhere else `timer:tref()` for events - 
-erleventer just keep data of this events together with `timer:tref()` in the ets table and provide simple
-API for manage them.
+Erleventer is the simple wraper around `timer:send_after` for easy management frequencies of periodic events.

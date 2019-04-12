@@ -1,8 +1,11 @@
--type frequency()       :: pos_integer().
--type process()         :: pid() | atom().
--type message()         :: term().
--type tag()             :: term().
--type send_method()     :: 'cast' | 'call' | 'info'.
+% todo: suport start_ops
+-type start_ops()   :: #{
+        'register'      => register_as(),
+        'cast_on_add'   => boolean() % default false
+    }.
+-type register_as() :: {'local', atom()} | {'global', term()}.
+
+
 -type cancel_ops()      :: [
                               {'frequency', frequency()}
                             | {'pid', process()}
@@ -23,6 +26,12 @@
                             'arguments' => list(),
                             'tag'       => tag()
                         }.
+
+-type frequency()       :: pos_integer().
+-type process()         :: pid() | atom().
+-type message()         :: term().
+-type tag()             :: term().
+-type send_method()     :: 'cast' | 'call' | 'info'.
 
 -record(task, {
         frequency   :: #{frequency() := pos_integer()} | '_',

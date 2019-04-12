@@ -175,13 +175,14 @@ init(Id) ->
     Tag         :: term(),
     State       :: state(),
     Reply       :: {'added', timer:tref()}
-                 | {'exists', timer:tref()}
-                 | {'re_scheduled', timer:tref()}
+                 | {'frequency_counter_updated', frequency(), pos_integer()}
+                 | {'re_scheduled', frequency(), timer:tref()}
                  | [
                        {'not_found', frequency()}
                      | {'cancelled', timer:tref()}
                      | {'re_scheduled', frequency(), timer:tref()}
                      | {'frequency_removed', frequency()}
+                     | {'frequency_counter_updated', frequency(), pos_integer()}
                    ]
                  | [],
     Result      :: {reply, Reply, State}.
@@ -235,7 +236,6 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Tag}, _From, State = #s
 
 
 handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = State) ->
-    ?here,
     MS = [{
             #task{
                 'pid' = build_spec_value('pid', CancelOps),
@@ -252,7 +252,6 @@ handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = Stat
     Gone = lists:map(
         fun
             (#task{tref = TRef}) when Frequency =:= '_' ->
-                ?here,
                 _ = timer:cancel(TRef),
                 ets:delete(EtsName, TRef),
                 {'cancelled', TRef};
@@ -345,8 +344,8 @@ cast_task(Frequency, Pid, 'call', Message) ->
     Task    :: task(),
     NewFrequency :: frequency(),
     State   :: state(),
-    Result  :: {'exists', timer:tref()}
-            |  {'re_scheduled', timer:tref()}.
+    Result  :: {'frequency_counter_updated', frequency(), pos_integer()}
+            |  {'re_scheduled', frequency(), timer:tref()}.
 
 add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #state{etsname = EtsName}) ->
     case maps:get(NewFrequency, FrequencyMap, 'undefined') of
@@ -362,7 +361,7 @@ add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #sta
                           tref = NewTRef
                          }
                     ),
-                    {'re_scheduled', NewTRef};
+                    {'re_scheduled', NewFrequency, NewTRef};
                 false ->
                     ets:insert(
                       EtsName,
@@ -370,16 +369,17 @@ add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #sta
                         frequency = maps:put(NewFrequency, 1, FrequencyMap)
                        }
                     ),
-                    {'exists', TRef}
+                    {'frequency_counter_updated', NewFrequency, 1}
             end;
         Qty ->
+            NewQty = Qty + 1,
             ets:insert(
               EtsName,
               Task#task{
-                frequency = maps:put(NewFrequency, Qty + 1, FrequencyMap)
+                frequency = maps:put(NewFrequency, NewQty, FrequencyMap)
                }
             ),
-            {'exists', TRef}
+            {'frequency_counter_updated', NewFrequency, NewQty}
     end.
 
 
@@ -403,10 +403,10 @@ recast(#task{cast_fun = CastFun, tref = TRef}, NewFrequency) ->
     Result              :: {'not_found', frequency()}
                         |  {'cancelled', timer:tref()}
                         |  {'re_scheduled', frequency(), timer:tref()}
-                        |  {'frequency_removed', frequency()}.
+                        |  {'frequency_removed', frequency()}
+                        |  {'frequency_counter_updated', frequency(), pos_integer()}.
 
 remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDelete, #state{etsname = EtsName}) ->
-    ?here,
     case maps:get(FrequencyToDelete, FrequencyMap, 'undefined') of
         'undefined' ->
             {'not_found', FrequencyToDelete};
@@ -441,13 +441,14 @@ remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDele
                     {'frequency_removed', FrequencyToDelete}
             end;
         Qty ->
+            NewQty = Qty - 1,
             _ = ets:insert(
               EtsName,
               Task#task{
-                frequency = maps:put(FrequencyToDelete, Qty - 1, FrequencyMap)
+                frequency = maps:put(FrequencyToDelete, NewQty, FrequencyMap)
                }
             ),
-            {'frequency_removed', FrequencyToDelete}
+            {'frequency_counter_updated', FrequencyToDelete, NewQty}
     end.
 
 

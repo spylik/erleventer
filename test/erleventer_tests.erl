@@ -63,7 +63,7 @@ eventer_seq_test_() ->
             [
                 {<<"Able to create new task and send data">>,
                     fun() ->
-                        LoopWait = 4,
+                        LoopWait = 20,
                         Freq = 2,
                         CountTill = 10,
                         TestMsg = {case1, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},
@@ -74,7 +74,7 @@ eventer_seq_test_() ->
                 end},
                 {<<"Able to create new task with new MestMsg">>,
                     fun() ->
-                        LoopWait = 4,
+                        LoopWait = 20,
                         Freq = 2,
                         CountTill = 3,
                         TestMsg = {case2, {erlang:monotonic_time(), erlang:unique_integer([monotonic,positive])}},

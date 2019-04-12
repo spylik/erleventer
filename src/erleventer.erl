@@ -134,7 +134,7 @@ add_fun_apply(Id, Frequency, Fun, Arguments, Tag) ->
 % @doc interface for delete event
 -spec cancel(Id, Parameters) -> Result when
     Id          :: atom(),
-    Parameters  :: [cancel_ops()],
+    Parameters  :: cancel_ops(),
     Result      :: 'ok'.
 
 cancel(Id, Parameters) ->

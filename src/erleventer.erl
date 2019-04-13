@@ -40,6 +40,8 @@
         cancel/2
     ]).
 
+-export_type([frequency/0]).
+
 -define(SERVER(Id),
     list_to_atom(lists:concat([Id, "_", ?MODULE]))
 ).
@@ -334,22 +336,31 @@ code_change(_OldVsn, State, _Extra) ->
     Result      :: {ok, timer:tref()}.
 
 cast_task(Frequency, Pid, 'info', Message) ->
-    timer:send_interval(Frequency, Pid, Message);
+    timer:send_interval(may_rondimize_frequency(Frequency), Pid, Message);
 
 cast_task(Frequency, Pid, 'cast', Message) ->
-    timer:apply_interval(Frequency, gen_server, 'cast', [Pid,Message]);
+    timer:apply_interval(may_rondimize_frequency(Frequency), gen_server, 'cast', [Pid,Message]);
 
 cast_task(Frequency, Pid, 'call', Message) ->
-    timer:apply_interval(Frequency, gen_server, 'call', [Pid,Message]).
+    timer:apply_interval(may_rondimize_frequency(Frequency), gen_server, 'call', [Pid,Message]).
 
+
+% @doc randomize frequency in period
+-spec may_rondimize_frequency(Frequency) -> Result when
+      Frequency :: frequency(),
+      Result    :: pos_integer().
+
+may_rondimize_frequency({'random_between', Lower, Upper}) ->
+    crypto:rand_uniform(Lower, Upper);
+may_rondimize_frequency(Frequency) -> Frequency.
 
 % @doc add frequency - reschedule event in case of target freq is less than what we have or update counter
 -spec add_freq(Task, NewFrequency, State) -> Result when
-    Task    :: task(),
-    NewFrequency :: frequency(),
-    State   :: state(),
-    Result  :: {'frequency_counter_updated', frequency(), pos_integer()}
-            |  {'re_scheduled', frequency(), timer:tref()}.
+    Task            :: task(),
+    NewFrequency    :: frequency(),
+    State           :: state(),
+    Result          :: {'frequency_counter_updated', frequency(), pos_integer()}
+                    |  {'re_scheduled', frequency(), timer:tref()}.
 
 add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #state{etsname = EtsName}) ->
     case maps:get(NewFrequency, FrequencyMap, 'undefined') of

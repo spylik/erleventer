@@ -27,7 +27,7 @@
                             'tag'       => tag()
                         }.
 
--type frequency()       :: pos_integer().
+-type frequency()       :: pos_integer() | {'random_between', pos_integer(), pos_integer()}.
 -type process()         :: pid() | atom().
 -type message()         :: term().
 -type tag()             :: term().

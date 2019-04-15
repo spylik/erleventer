@@ -20,6 +20,7 @@
 -endif.
 
 -include("erleventer.hrl").
+-include("deps/teaser/include/utils.hrl"). % for debug
 
 % gen server is here
 -behaviour(gen_server).
@@ -97,21 +98,26 @@ stop(async, Id) ->
     Result      :: result_of_add().
 
 add_send_message(Id, Frequency, Pid, Method, Message) ->
-    add_send_message(Id, Frequency, Pid, Method, Message, 'undefined').
+    add_send_message(Id, Frequency, Pid, Method, Message, #{}).
 
 
--spec add_send_message(Id, Frequency, Pid, Method, Message, Tag) -> Result when
+-spec add_send_message(Id, Frequency, Pid, Method, Message, Options) -> Result when
     Id          :: atom(),
     Frequency   :: frequency(),
     Pid         :: process(),
     Method      :: send_method(),
     Message     :: message(),
-    Tag         :: term(),
+    Options     :: add_options(),
     Result      :: result_of_add().
 
-add_send_message(Id, Frequency, Pid, Method, Message, Tag) ->
-    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Pid, Method, Message, Tag}).
-
+add_send_message(Id, Frequency, Pid, Method, Message, Options) ->
+    add_fun_apply(
+      Id,
+      Frequency,
+      gen_fun_for_method(Method),
+      [Pid, Message],
+      Options
+    ).
 
 % @doc interface for add new function for pereodic execution
 -spec add_fun_apply(Id, Frequency, Fun, Arguments) -> Result when
@@ -122,29 +128,45 @@ add_send_message(Id, Frequency, Pid, Method, Message, Tag) ->
     Result      :: result_of_add().
 
 add_fun_apply(Id, Frequency, Fun, Arguments) ->
-    add_fun_apply(Id, Frequency, Fun, Arguments, 'undefined').
+    add_fun_apply(Id, Frequency, Fun, Arguments, #{}).
 
 
--spec add_fun_apply(Id, Frequency, Fun, Arguments, Tag) -> Result when
+-spec add_fun_apply(Id, Frequency, Fun, Arguments, Options) -> Result when
     Id          :: atom(),
     Frequency   :: frequency(),
     Fun         :: fun(),
     Arguments   :: list(),
-    Tag         :: term(),
+    Options     :: add_options(),
     Result      :: result_of_add().
 
-add_fun_apply(Id, Frequency, Fun, Arguments, Tag) ->
-    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Fun, Arguments, Tag}).
+add_fun_apply(Id, Frequency, Fun, Arguments, Options) ->
+    gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Fun, Arguments, Options}).
 
 
 % @doc interface for delete event
--spec cancel(Id, Parameters) -> Result when
+-spec cancel(Id, Options) -> Result when
     Id          :: atom(),
-    Parameters  :: cancel_ops(),
+    Options     :: cancel_ops(),
     Result      :: 'ok'.
 
-cancel(Id, Parameters) ->
-    gen_server:call(?SERVER(Id), {cancel, Parameters}).
+cancel(Id, Options) ->
+    Pid = maps:get('pid', Options, '_'),
+    Method = maps:get('method', Options, '_'),
+    Message = maps:get('message', Options, '_'),
+
+    case Pid =/= '_' orelse Method =/= '_' orelse Message =/= '_' of
+        false ->
+            gen_server:call(?SERVER(Id), {cancel, Options});
+        true ->
+            cancel(Id,
+                maps:put('fun', gen_fun_for_method(Method),
+                    maps:put('arguments',
+                        [Pid, Message],
+                        maps:without(['pid', 'method', 'message'], Options)
+                    )
+                )
+            )
+    end.
 
 % -------------------------- end of public api part ----------------------------
 
@@ -156,11 +178,8 @@ cancel(Id, Parameters) ->
     Result  :: {'ok', state()}.
 
 init(Id) ->
-    EtsName = ?SERVER(Id),
-    _Tid = ets:new(EtsName, [set, protected, {keypos, #task.tref}, named_table]),
-
     {ok, #state{
-            etsname=EtsName
+            ets_name = ets:new(?SERVER(Id), [set, protected, {keypos, #task.tref}, named_table])
         }
     }.
 
@@ -169,16 +188,9 @@ init(Id) ->
 % @doc callbacks for gen_server handle_call.
 -spec handle_call(Message, From, State) -> Result when
     Message     :: Add | Cancel,
-    Add         :: {'add_send_message', Frequency, Pid, Method, Message, Tag}
-                 | {'add_fun_apply', Frequency, Fun, Arguments, Tag},
+    Add         :: {'add_fun_apply', frequency(), fun(), Arguments, add_options()},
     Cancel      :: {'cancel', cancel_ops()},
-    Frequency   :: frequency(),
 
-    Pid         :: process(),
-    Method      :: send_method(),
-    Message     :: message(),
-
-    Fun         :: fun(),
     Arguments   :: list(),
 
     From        :: {pid(), Tag},
@@ -190,45 +202,27 @@ init(Id) ->
                  | result_of_cancel(),
     Result      :: {reply, Reply, State}.
 
-% @doc handle add events
-handle_call({'add_send_message', Frequency, Pid, Method, Message, Tag}, _From, State = #state{etsname = EtsName} = State) ->
-    MS = [{#task{'pid' = Pid, 'method' = Method, 'message' = Message, _ = '_'}, [], ['$_']}],
 
-    Reply = case ets:select(EtsName, MS) of
-        [Task] ->
-            add_freq(Task, Frequency, State);
-        [] ->
-            CastFun = fun(TargetFrequency) -> cast_task(TargetFrequency, Pid, Method, Message) end,
-            {ok, TRef} = erlang:apply(CastFun, [Frequency]),
-            Task = #task{
-                frequency = #{Frequency => 1},
-                pid = Pid,
-                method = Method,
-                message = Message,
-                tag = Tag,
-                tref = TRef,
-                cast_fun = CastFun
-            },
-            ets:insert(EtsName, Task),
-            {'added',TRef}
-    end,
-    {reply, Reply, State};
-
-
-handle_call({'add_fun_apply', Frequency, Fun, Arguments, Tag}, _From, State = #state{etsname = EtsName} = State) ->
+handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State = #state{ets_name = EtsName} = State) ->
     MS = [{#task{'function' = Fun, 'arguments' = Arguments, _ = '_'}, [], ['$_']}],
 
     Reply = case ets:select(EtsName, MS) of
         [Task] ->
             add_freq(Task, Frequency, State);
         [] ->
-            CastFun = fun(TargetFrequency) -> cast_task(TargetFrequency, self(), 'info', {'cast_safe', Fun, Arguments}) end,
+            CastFun = fun(TargetFrequency) ->
+                timer:send_interval(
+                  may_rondimize_frequency(TargetFrequency),
+                  self(),
+                  {'cast_safe', Fun, Arguments}
+                )
+            end,
             {ok, TRef} = erlang:apply(CastFun, [Frequency]),
             Task = #task{
                 frequency = #{Frequency => 1},
                 function = Fun,
                 arguments = Arguments,
-                tag = Tag,
+                tag = maps:get('tag', Options, 'undefined'),
                 tref = TRef,
                 cast_fun = CastFun
             },
@@ -238,20 +232,17 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Tag}, _From, State = #s
     {reply, Reply, State};
 
 
-handle_call({cancel, CancelOps}, _From, State = #state{etsname = EtsName} = State) ->
+handle_call({cancel, CancelOps}, _From, State = #state{ets_name = EtsName} = State) ->
     MS = [{
             #task{
-                'pid' = build_spec_value('pid', CancelOps),
-                'method' = build_spec_value('method', CancelOps),
-                'message' = build_spec_value('message', CancelOps),
-                'function' = build_spec_value('function', CancelOps),
-                'module' = build_spec_value('module', CancelOps),
-                'arguments' = build_spec_value('arguments', CancelOps),
-                'tag' = build_spec_value('tag', CancelOps),
+                'function' = maps:get('function', CancelOps, '_'),
+                'arguments' = maps:get('arguments', CancelOps, '_'),
+                'tag' = maps:get('tag', CancelOps, '_'),
                 _ = '_'
             }, [], ['$_']
           }],
-    Frequency = build_spec_value('frequency', CancelOps),
+
+    Frequency = maps:get('frequency', CancelOps, '_'),
     Gone = lists:map(
         fun
             (#task{tref = TRef}) when Frequency =:= '_' ->
@@ -299,7 +290,7 @@ handle_info({'cast_safe', Fun, Arguments}, State) ->
     Reason  :: 'normal' | 'shutdown' | {'shutdown',term()} | term(),
     State   :: term().
 
-terminate(Reason, State = #state{etsname = EtsName}) ->
+terminate(Reason, State = #state{ets_name = EtsName}) ->
     _ = lists:map(
         fun(#task{tref = TRef}) ->
             timer:cancel(TRef)
@@ -324,23 +315,6 @@ code_change(_OldVsn, State, _Extra) ->
 
 % ============================= INTERNALS ======================================
 
-% @doc interface for sending message with different methods
--spec cast_task(Frequency, Pid, Method, Message) -> Result when
-    Frequency   :: frequency(),
-    Pid         :: process(),
-    Method      :: send_method(),
-    Message     :: message(),
-    Result      :: {ok, timer:tref()}.
-
-cast_task(Frequency, Pid, 'info', Message) ->
-    timer:send_interval(may_rondimize_frequency(Frequency), Pid, Message);
-
-cast_task(Frequency, Pid, 'cast', Message) ->
-    timer:apply_interval(may_rondimize_frequency(Frequency), gen_server, 'cast', [Pid,Message]);
-
-cast_task(Frequency, Pid, 'call', Message) ->
-    timer:apply_interval(may_rondimize_frequency(Frequency), gen_server, 'call', [Pid,Message]).
-
 
 % @doc randomize frequency in period
 -spec may_rondimize_frequency(Frequency) -> Result when
@@ -348,7 +322,7 @@ cast_task(Frequency, Pid, 'call', Message) ->
       Result    :: pos_integer().
 
 may_rondimize_frequency({'random_between', Lower, Upper}) ->
-    crypto:rand_uniform(Lower, Upper);
+    rand:uniform(Upper-Lower) + Lower;
 may_rondimize_frequency(Frequency) -> Frequency.
 
 % @doc add frequency - reschedule event in case of target freq is less than what we have or update counter
@@ -359,7 +333,7 @@ may_rondimize_frequency(Frequency) -> Frequency.
     Result          :: {'frequency_counter_updated', frequency(), pos_integer()}
                     |  {'re_scheduled', frequency(), timer:tref()}.
 
-add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #state{etsname = EtsName}) ->
+add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #state{ets_name = EtsName}) ->
     case maps:get(NewFrequency, FrequencyMap, 'undefined') of
         'undefined' ->
             case NewFrequency < hd(lists:sort(maps:keys(FrequencyMap))) of
@@ -418,7 +392,7 @@ recast(#task{cast_fun = CastFun, tref = TRef}, NewFrequency) ->
                         |  {'frequency_removed', frequency()}
                         |  {'frequency_counter_updated', frequency(), pos_integer()}.
 
-remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDelete, #state{etsname = EtsName}) ->
+remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDelete, #state{ets_name = EtsName}) ->
     case maps:get(FrequencyToDelete, FrequencyMap, 'undefined') of
         'undefined' ->
             {'not_found', FrequencyToDelete};
@@ -463,18 +437,12 @@ remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDele
             {'frequency_counter_updated', FrequencyToDelete, NewQty}
     end.
 
+% @doc generate function for sending message method
+-spec gen_fun_for_method(Method) -> Result when
+    Method  :: send_method() | '_',
+    Result  :: fun() | '_'.
 
-% @doc build value by given key for matchspec
--spec build_spec_value(Key, CancelOps) -> Result when
-        Key         :: 'frequency' | 'pid' | 'method' | 'message' | 'function' | 'module' | 'arguments' | 'tag',
-        CancelOps   :: cancel_ops(),
-        Result      :: '_' | term().
-
-build_spec_value(Key, CancelOps) when is_list(CancelOps) ->
-        case lists:keyfind(Key, 1, CancelOps) of
-            {Key, Val} -> Val;
-            false -> '_'
-        end;
-build_spec_value(Key, CancelOps) when is_map(CancelOps) ->
-    maps:get(Key, CancelOps, '_').
-
+gen_fun_for_method('info') -> fun erlang:send/2;
+gen_fun_for_method('cast') -> fun gen_server:cast/2;
+gen_fun_for_method('call') -> fun gen_server:call/2;
+gen_fun_for_method('_') -> '_'.

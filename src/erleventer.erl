@@ -210,6 +210,7 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State 
         [Task] ->
             add_freq(Task, Frequency, State);
         [] ->
+            _ = may_run_on_init(Options, Fun, Arguments),
             CastFun = fun(TargetFrequency) ->
                 timer:send_interval(
                   may_rondimize_frequency(TargetFrequency),
@@ -230,7 +231,6 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State 
             {'added', TRef}
     end,
     {reply, Reply, State};
-
 
 handle_call({cancel, CancelOps}, _From, State = #state{ets_name = EtsName} = State) ->
     MS = [{
@@ -314,6 +314,18 @@ code_change(_OldVsn, State, _Extra) ->
 % ----------------------- end of gen_server part -------------------------------
 
 % ============================= INTERNALS ======================================
+
+% @doc run on init if run_on_init in add_task options
+-spec may_run_on_init(Options, Fun, Arguments) -> Result when
+    Options     :: add_options(),
+    Fun         :: fun(),
+    Arguments   :: list(),
+    Result      :: {noreply, fake_state} | false.
+
+may_run_on_init(#{run_on_init := true}, Fun, Arguments) ->
+    handle_info({'cast_safe', Fun, Arguments}, fake_state);
+may_run_on_init(_Options, _Fun, _Arguments) -> false.
+
 
 
 % @doc randomize frequency in period

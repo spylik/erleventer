@@ -1,7 +1,6 @@
 % todo: suport start_ops
 -type start_ops()   :: #{
-        'register'      => register_as(),
-        'cast_on_add'   => boolean() % default false
+        'register'      => register_as()
     }.
 -type register_as() :: {'local', atom()} | {'global', term()}.
 
@@ -22,13 +21,7 @@
                                  | {'frequency_counter_updated', frequency(), pos_integer()}
                             ] | [].
 
--type cancel_ops()      :: [
-                              {'frequency', frequency()}
-                            | {'function', fun()}
-                            | {'arguments', list()}
-                            | {'tag', tag()}
-                        ]
-                        | #{
+-type cancel_ops()      :: #{
                             'frequency' => frequency(),
                             'function'  => fun(),
                             'arguments' => list(),
@@ -42,6 +35,8 @@
 -type send_method()     :: 'cast' | 'call' | 'info'.
 
 -record(task, {
+        key         :: undefined | {fun(), list()} | '_',
+
         frequency   :: #{frequency() := pos_integer()} | '_',
 
         % fun apply task

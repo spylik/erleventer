@@ -9,6 +9,7 @@
 %% 2. track last_event_time
 %% 3. during changing frequency calculate time for the next event based on NewFreq and last_event_time
 %% 4. more flexible api for registering name
+%% 5. correctly compare frequencies
 %% @end
 %% --------------------------------------------------------------------------------
 
@@ -333,8 +334,8 @@ may_run_on_init(_Options, _Fun, _Arguments) -> false.
       Frequency :: frequency(),
       Result    :: pos_integer().
 
-may_rondimize_frequency({'random_between', Lower, Upper}) ->
-    rand:uniform(Upper-Lower) + Lower;
+may_rondimize_frequency({'random', Lower, Upper}) ->
+    rand:uniform(Upper-(Lower-1)) + Lower;
 may_rondimize_frequency(Frequency) -> Frequency.
 
 % @doc add frequency - reschedule event in case of target freq is less than what we have or update counter
@@ -348,7 +349,7 @@ may_rondimize_frequency(Frequency) -> Frequency.
 add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #state{ets_name = EtsName}) ->
     case maps:get(NewFrequency, FrequencyMap, 'undefined') of
         'undefined' ->
-            case NewFrequency < hd(lists:sort(maps:keys(FrequencyMap))) of
+            case compare_freq(NewFrequency, hd(lists:sort(maps:keys(FrequencyMap)))) of
                 true ->
                     NewTRef = recast(Task, NewFrequency),
                     ets:delete(EtsName, TRef),
@@ -380,6 +381,18 @@ add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #sta
             {'frequency_counter_updated', NewFrequency, NewQty}
     end.
 
+% @doc comprare frequencies (respecting randomization)
+-spec compare_freq(NewFrequency, OldFrequency) -> Result when
+    NewFrequency    :: frequency(),
+    OldFrequency    :: frequency(),
+    Result          :: boolean().
+
+compare_freq(New, Old) when is_tuple(New) andalso is_tuple(Old) -> New < Old;
+compare_freq({random, SameNumber, _Max0}, SameNumber) -> false;
+compare_freq({random, Min0, _Max0}, Number) when is_number(Number) -> Min0 < Number;
+compare_freq(SameNumber, {random, SameNumber, _Max1}) -> true;
+compare_freq(Number, {random, Min1, _Max1}) when is_number(Number) -> Number < Min1;
+compare_freq(Number0, Number1) -> Number0 < Number1.
 
 % @doc recast task with new frequency
 -spec recast(Task, NewFrequency) -> Result when
@@ -409,7 +422,7 @@ remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDele
         'undefined' ->
             {'not_found', FrequencyToDelete};
         1 ->
-            NeedRescedule = lists:min(maps:keys(FrequencyMap)) =:= FrequencyToDelete,
+            NeedRescedule = hd(lists:sort(fun compare_freq/2, maps:keys(FrequencyMap))) =:= FrequencyToDelete,
             case NeedRescedule of
                 true when map_size(FrequencyMap) =:= 1 ->
                     _ = timer:cancel(TRef),

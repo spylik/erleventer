@@ -307,6 +307,69 @@ frequencer_test_() ->
                         ?assertEqual(8, length(ets:tab2list(Tid)))
                     end
                  },
+
+                 {<<"Test for comparing random frequencies with static (first cancel random).">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(
+                           ?TESTID, 10,
+                           fun erleventer_tests:add_to_ets/1,
+                           [Tid], #{tag => Tag}
+                        ),
+                        timer:sleep(25),
+                        ?assertEqual(2, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:add_fun_apply(
+                           ?TESTID, {random, 4, 5},
+                           fun erleventer_tests:add_to_ets/1,
+                           [Tid], #{tag => Tag}
+                        ),
+                        timer:sleep(27),
+                        Length0 = length(ets:tab2list(Tid)),
+                        ?assert(6 =:= Length0 orelse 7 =:= Length0),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => {random, 4, 5}}),
+                        timer:sleep(17),
+                        Length1 = length(ets:tab2list(Tid)),
+                        ?assert(7 =:= Length1 orelse 8 =:= Length1),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 10}),
+                        timer:sleep(25),
+                        Length2 = length(ets:tab2list(Tid)),
+                        ?assert(7 =:= Length2 orelse 8 =:= Length2)
+
+                    end
+                 },
+                 {<<"Test for comparing random frequencies with static (first cancel random).">>,
+                    fun() ->
+                        Tid = ets:new(?MODULE, [bag, public]),
+                        Tag = erlang:make_ref(),
+                        ?TESTMODULE:add_fun_apply(
+                           ?TESTID, 10,
+                           fun erleventer_tests:add_to_ets/1,
+                           [Tid], #{tag => Tag}
+                        ),
+                        timer:sleep(25),
+                        ?assertEqual(2, length(ets:tab2list(Tid))),
+                        ?TESTMODULE:add_fun_apply(
+                           ?TESTID, {random, 4, 5},
+                           fun erleventer_tests:add_to_ets/1,
+                           [Tid], #{tag => Tag}
+                        ),
+                        timer:sleep(27),
+                        Length0 = length(ets:tab2list(Tid)),
+                        ?assert(6 =:= Length0 orelse 7 =:= Length0),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 10}),
+                        timer:sleep(17),
+                        Length1 = length(ets:tab2list(Tid)),
+                        ?assert(9 =:= Length1 orelse 10 =:= Length1 orelse 11 =:= Length1),
+                        ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => {random, 4, 5}}),
+                        timer:sleep(25),
+                        Length2 = length(ets:tab2list(Tid)),
+                        ?assert(9 =:= Length1 orelse 10 =:= Length1 orelse 11 =:= Length1)
+                    end
+                 },
+
+
+
                  {<<"Add frequency for apply (>current). First cancel lower">>,
                     fun() ->
                         Tid = ets:new(?MODULE, [bag, public]),
@@ -336,6 +399,17 @@ frequencer_test_() ->
             ]
         }
      }.
+
+compare_frequencies_test() ->
+    ?assert(?TESTMODULE:compare_freq({'random', 5, 10}, 10)),
+    ?assert(?TESTMODULE:compare_freq({'random', 5, 9}, 10)),
+
+    ?assertNot(?TESTMODULE:compare_freq(10, {'random', 5, 10})),
+    ?assertNot(?TESTMODULE:compare_freq(10, {'random', 5, 9})),
+
+    ?assert(?TESTMODULE:compare_freq(10, {'random', 10, 11})),
+    ?assertNot(?TESTMODULE:compare_freq({'random', 10, 11}, 10)),
+    ?assertNot(?TESTMODULE:compare_freq({'random', 11, 12}, 10)).
 
 add_to_ets(Tid) ->
     ets:insert(Tid, {erlang:make_ref()}).

@@ -159,7 +159,7 @@ cancel(Id, Options) ->
             gen_server:call(?SERVER(Id), {cancel, Options});
         true ->
             cancel(Id,
-                maps:put('fun', gen_fun_for_method(Method),
+                maps:put('function', gen_fun_for_method(Method),
                     maps:put('arguments',
                         [Pid, Message],
                         maps:without(['pid', 'method', 'message'], Options)

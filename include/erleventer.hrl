@@ -6,13 +6,25 @@
 -type register_as() :: {'local', atom()} | {'global', term()}.
 
 
+-type result_of_add()       :: {'added', timer:tref()}
+                            |  {'frequency_counter_updated', frequency(), pos_integer()}
+                            |  {'re_scheduled', frequency(), timer:tref()}.
+
+-type result_of_cancel()   :: [
+                                   {'not_found', frequency()}
+                                 | {'cancelled', timer:tref()}
+                                 | {'re_scheduled', frequency(), timer:tref()}
+                                 | {'frequency_removed', frequency()}
+                                 | {'frequency_counter_updated', frequency(), pos_integer()}
+                            ] | [].
+
 -type cancel_ops()      :: [
                               {'frequency', frequency()}
                             | {'pid', process()}
                             | {'method', send_method()}
                             | {'message', message()}
                             | {'function', fun()}
-                            | {'moduke', module()}
+                            | {'module', module()}
                             | {'arguments', list()}
                             | {'tag', tag()}
                         ]

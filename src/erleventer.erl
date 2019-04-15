@@ -40,7 +40,11 @@
         cancel/2
     ]).
 
--export_type([frequency/0]).
+-export_type([
+        frequency/0,
+        result_of_add/0,
+        result_of_cancel/0
+    ]).
 
 -define(SERVER(Id),
     list_to_atom(lists:concat([Id, "_", ?MODULE]))
@@ -90,7 +94,7 @@ stop(async, Id) ->
     Pid         :: process(),
     Method      :: send_method(),
     Message     :: message(),
-    Result      :: {ok, timer:tref()}.
+    Result      :: result_of_add().
 
 add_send_message(Id, Frequency, Pid, Method, Message) ->
     add_send_message(Id, Frequency, Pid, Method, Message, 'undefined').
@@ -103,7 +107,7 @@ add_send_message(Id, Frequency, Pid, Method, Message) ->
     Method      :: send_method(),
     Message     :: message(),
     Tag         :: term(),
-    Result      :: {ok, timer:tref()}.
+    Result      :: result_of_add().
 
 add_send_message(Id, Frequency, Pid, Method, Message, Tag) ->
     gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Pid, Method, Message, Tag}).
@@ -115,7 +119,7 @@ add_send_message(Id, Frequency, Pid, Method, Message, Tag) ->
     Frequency   :: frequency(),
     Fun         :: fun(),
     Arguments   :: list(),
-    Result      :: {ok, timer:tref()}.
+    Result      :: result_of_add().
 
 add_fun_apply(Id, Frequency, Fun, Arguments) ->
     add_fun_apply(Id, Frequency, Fun, Arguments, 'undefined').
@@ -127,7 +131,7 @@ add_fun_apply(Id, Frequency, Fun, Arguments) ->
     Fun         :: fun(),
     Arguments   :: list(),
     Tag         :: term(),
-    Result      :: {ok, timer:tref()}.
+    Result      :: result_of_add().
 
 add_fun_apply(Id, Frequency, Fun, Arguments, Tag) ->
     gen_server:call(?SERVER(Id), {?FUNCTION_NAME, Frequency, Fun, Arguments, Tag}).
@@ -182,15 +186,8 @@ init(Id) ->
     State       :: state(),
     Reply       :: {'added', timer:tref()}
                  | {'frequency_counter_updated', frequency(), pos_integer()}
-                 | {'re_scheduled', frequency(), timer:tref()}
-                 | [
-                       {'not_found', frequency()}
-                     | {'cancelled', timer:tref()}
-                     | {'re_scheduled', frequency(), timer:tref()}
-                     | {'frequency_removed', frequency()}
-                     | {'frequency_counter_updated', frequency(), pos_integer()}
-                   ]
-                 | [],
+                 | result_of_add()
+                 | result_of_cancel(),
     Result      :: {reply, Reply, State}.
 
 % @doc handle add events

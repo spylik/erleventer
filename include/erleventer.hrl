@@ -22,6 +22,9 @@
                             ] | [].
 
 -type cancel_options()     :: #{
+                            'method'    => send_method(),
+                            'pid'       => process(),
+                            'message'   => message(),
                             'frequency' => frequency(),
                             'function'  => fun(),
                             'arguments' => list(),

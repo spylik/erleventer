@@ -42,6 +42,8 @@
     ]).
 
 -export_type([
+        add_options/0,
+        cancel_options/0,
         frequency/0,
         result_of_add/0,
         result_of_cancel/0
@@ -146,7 +148,7 @@ add_fun_apply(Id, Frequency, Fun, Arguments, Options) ->
 % @doc interface for delete event
 -spec cancel(Id, Options) -> Result when
     Id          :: atom(),
-    Options     :: cancel_ops(),
+    Options     :: cancel_options(),
     Result      :: 'ok'.
 
 cancel(Id, Options) ->
@@ -189,7 +191,7 @@ init(Id) ->
 -spec handle_call(Message, From, State) -> Result when
     Message     :: Add | Cancel,
     Add         :: {'add_fun_apply', frequency(), fun(), Arguments, add_options()},
-    Cancel      :: {'cancel', cancel_ops()},
+    Cancel      :: {'cancel', cancel_options()},
 
     Arguments   :: list(),
 

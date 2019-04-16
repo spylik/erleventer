@@ -21,7 +21,7 @@
                                  | {'frequency_counter_updated', frequency(), pos_integer()}
                             ] | [].
 
--type cancel_ops()      :: #{
+-type cancel_options()     :: #{
                             'frequency' => frequency(),
                             'function'  => fun(),
                             'arguments' => list(),

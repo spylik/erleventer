@@ -21,7 +21,6 @@
 -endif.
 
 -include("erleventer.hrl").
--include("deps/teaser/include/utils.hrl"). % for debug
 
 % gen server is here
 -behaviour(gen_server).

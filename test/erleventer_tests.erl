@@ -379,10 +379,10 @@ frequencer_test_() ->
                             fun erleventer_tests:add_to_ets/1,
                             [Tid], #{tag => Tag}
                         ),
-                        timer:sleep(26),
+                        timer:sleep(27),
                         ?assertEqual(5, length(ets:tab2list(Tid))),
                         ?TESTMODULE:add_fun_apply(?TESTID, 10, fun erleventer_tests:add_to_ets/1, [Tid], Tag),
-                        timer:sleep(26),
+                        timer:sleep(27),
                         ?assertEqual(10, length(ets:tab2list(Tid))),
                         ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => 5}),
                         timer:sleep(25),

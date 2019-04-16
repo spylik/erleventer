@@ -375,7 +375,7 @@ frequencer_two_test_() ->
                         ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => {random, 4, 5}}),
                         timer:sleep(25),
                         Length2 = length(ets:tab2list(Tid)),
-                        ?assert(9 =:= Length1 orelse 10 =:= Length1 orelse 11 =:= Length1)
+                        ?assert(9 =:= Length2 orelse 10 =:= Length2 orelse 11 =:= Length2)
                     end
                  },
 

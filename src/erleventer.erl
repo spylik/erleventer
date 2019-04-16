@@ -149,7 +149,7 @@ add_fun_apply(Id, Frequency, Fun, Arguments, Options) ->
 -spec cancel(Id, Options) -> Result when
     Id          :: atom(),
     Options     :: cancel_options(),
-    Result      :: 'ok'.
+    Result      :: result_of_cancel().
 
 cancel(Id, Options) ->
     Pid = maps:get('pid', Options, '_'),

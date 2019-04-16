@@ -187,7 +187,7 @@ eventer_seq_test_() ->
         }
     }.
 
-frequencer_test_() ->
+frequencer_one_test_() ->
      {setup,
         fun setup_start/0,
         fun stop_server/1,
@@ -306,8 +306,19 @@ frequencer_test_() ->
                         timer:sleep(25),
                         ?assertEqual(8, length(ets:tab2list(Tid)))
                     end
-                 },
+                 }
 
+            ]
+        }
+     }.
+
+
+frequencer_two_test_() ->
+     {setup,
+        fun setup_start/0,
+        fun stop_server/1,
+        {inparallel,
+            [
                  {<<"Test for comparing random frequencies with static (first cancel random).">>,
                     fun() ->
                         Tid = ets:new(?MODULE, [bag, public]),
@@ -368,8 +379,6 @@ frequencer_test_() ->
                     end
                  },
 
-
-
                  {<<"Add frequency for apply (>current). First cancel lower">>,
                     fun() ->
                         Tid = ets:new(?MODULE, [bag, public]),
@@ -394,10 +403,6 @@ frequencer_test_() ->
                         ?assertEqual(12, length(ets:tab2list(Tid)))
                     end
                  }
-
-
-
-
             ]
         }
      }.

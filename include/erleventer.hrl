@@ -35,15 +35,9 @@
 -type send_method()     :: 'cast' | 'call' | 'info'.
 
 -record(task, {
-        key         :: undefined | {fun(), list()} | '_',
+        key         :: undefined | {fun(), list()} | '_',  %{fun, arguments}
 
         frequency   :: #{frequency() := pos_integer()} | '_',
-
-        % fun apply task
-        function    :: 'undefined' | fun() | '_',
-
-        % argument for fun apply task
-        arguments   :: 'undefined' | list() | '_',
 
         tref        :: timer:tref() | '_',                  % current tref
         cast_fun    :: fun() | '_',                         % cast function (runtime helper data)

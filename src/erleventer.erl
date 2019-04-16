@@ -180,7 +180,7 @@ cancel(Id, Options) ->
 
 init(Id) ->
     {ok, #state{
-            ets_name = ets:new(?SERVER(Id), [set, protected, {keypos, #task.tref}, named_table])
+            ets_name = ets:new(?SERVER(Id), [set, protected, {keypos, #task.key}, named_table])
         }
     }.
 
@@ -205,9 +205,7 @@ init(Id) ->
 
 
 handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State = #state{ets_name = EtsName} = State) ->
-    MS = [{#task{'function' = Fun, 'arguments' = Arguments, _ = '_'}, [], ['$_']}],
-
-    Reply = case ets:select(EtsName, MS) of
+    Reply = case ets:lookup(EtsName, {Fun, Arguments}) of
         [Task] ->
             add_freq(Task, Frequency, State);
         [] ->
@@ -221,9 +219,8 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State 
             end,
             {ok, TRef} = erlang:apply(CastFun, [Frequency]),
             Task = #task{
+                key = {Fun, Arguments},
                 frequency = #{Frequency => 1},
-                function = Fun,
-                arguments = Arguments,
                 tag = maps:get('tag', Options, 'undefined'),
                 tref = TRef,
                 cast_fun = CastFun
@@ -236,8 +233,7 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State 
 handle_call({cancel, CancelOps}, _From, State = #state{ets_name = EtsName} = State) ->
     MS = [{
             #task{
-                'function' = maps:get('function', CancelOps, '_'),
-                'arguments' = maps:get('arguments', CancelOps, '_'),
+                'key' = {maps:get('function', CancelOps, '_'), maps:get('arguments', CancelOps, '_')},
                 'tag' = maps:get('tag', CancelOps, '_'),
                 _ = '_'
             }, [], ['$_']
@@ -246,9 +242,9 @@ handle_call({cancel, CancelOps}, _From, State = #state{ets_name = EtsName} = Sta
     Frequency = maps:get('frequency', CancelOps, '_'),
     Gone = lists:map(
         fun
-            (#task{tref = TRef}) when Frequency =:= '_' ->
+            (#task{key = Key, tref = TRef}) when Frequency =:= '_' ->
                 _ = timer:cancel(TRef),
-                ets:delete(EtsName, TRef),
+                ets:delete(EtsName, Key),
                 {'cancelled', TRef};
             (Task) ->
                 remove_freq(Task, Frequency, State)
@@ -346,13 +342,12 @@ may_rondimize_frequency(Frequency) -> Frequency.
     Result          :: {'frequency_counter_updated', frequency(), pos_integer()}
                     |  {'re_scheduled', frequency(), timer:tref()}.
 
-add_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, NewFrequency, #state{ets_name = EtsName}) ->
+add_freq(#task{frequency = FrequencyMap} = Task, NewFrequency, #state{ets_name = EtsName}) ->
     case maps:get(NewFrequency, FrequencyMap, 'undefined') of
         'undefined' ->
             case compare_freq(NewFrequency, hd(lists:sort(maps:keys(FrequencyMap)))) of
                 true ->
                     NewTRef = recast(Task, NewFrequency),
-                    ets:delete(EtsName, TRef),
                     ets:insert(
                         EtsName,
                         Task#task{
@@ -417,7 +412,7 @@ recast(#task{cast_fun = CastFun, tref = TRef}, NewFrequency) ->
                         |  {'frequency_removed', frequency()}
                         |  {'frequency_counter_updated', frequency(), pos_integer()}.
 
-remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDelete, #state{ets_name = EtsName}) ->
+remove_freq(#task{key = Key, frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDelete, #state{ets_name = EtsName}) ->
     case maps:get(FrequencyToDelete, FrequencyMap, 'undefined') of
         'undefined' ->
             {'not_found', FrequencyToDelete};
@@ -426,14 +421,13 @@ remove_freq(#task{frequency = FrequencyMap, tref = TRef} = Task, FrequencyToDele
             case NeedRescedule of
                 true when map_size(FrequencyMap) =:= 1 ->
                     _ = timer:cancel(TRef),
-                    _ = ets:delete(EtsName, TRef),
+                    _ = ets:delete(EtsName, Key),
                     {'cancelled', TRef};
                 true ->
                     _ = timer:cancel(TRef),
                     NewFrequencyMap = maps:remove(FrequencyToDelete, FrequencyMap),
                     NewFrequency = lists:min(maps:keys(NewFrequencyMap)),
                     NewTRef = recast(Task, NewFrequency),
-                    _ = ets:delete(EtsName, TRef),
                     _ = ets:insert(
                         EtsName,
                         Task#task{

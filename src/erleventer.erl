@@ -40,6 +40,7 @@
         add_send_message/6,
         add_fun_apply/4,
         add_fun_apply/5,
+        server_name/1,
         cancel/2
     ]).
 
@@ -91,6 +92,12 @@ stop(sync, Id) ->
 stop(async, Id) ->
     gen_server:cast(?SERVER(Id), stop).
 
+% @doc server name
+-spec server_name(Id) -> Result when
+    Id          :: atom(),
+    Result      :: atom().
+
+server_name(Id) -> ?SERVER(Id).
 
 % @doc interface for add new send_message event (notag)
 -spec add_send_message(Id, Frequency, Pid, Method, Message) -> Result when

@@ -21,7 +21,7 @@
                                  | {'frequency_counter_updated', frequency(), pos_integer()}
                             ] | [].
 
--type cancel_options()     :: #{
+-type search_task_spec()     :: #{
                             'method'    => send_method(),
                             'pid'       => process(),
                             'message'   => message(),

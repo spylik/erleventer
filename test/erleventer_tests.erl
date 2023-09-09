@@ -202,9 +202,11 @@ frequencer_one_test_() ->
                            fun(Table) -> erleventer_tests:add_to_ets(Table) end,
                            [Tid], #{tag => Tag}
                         ),
+                        ?assertEqual(true, erleventer:is_task_exist(?TESTID, #{tag => Tag})),
                         timer:sleep(25),
                         ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag}),
-                        ?assertEqual(2, length(ets:tab2list(Tid)))
+                        ?assertEqual(2, length(ets:tab2list(Tid))),
+                        ?assertEqual(false, erleventer:is_task_exist(?TESTID, #{tag => Tag}))
                     end
                  },
                  {<<"Simply periodic apply fun() with wait after cancel">>,
@@ -374,7 +376,6 @@ frequencer_two_test_() ->
                         ?assert(9 =:= Length1 orelse 10 =:= Length1 orelse 11 =:= Length1),
                         ?TESTMODULE:cancel(?TESTID, #{'tag' => Tag, frequency => {random, 4, 5}}),
                         timer:sleep(25),
-                        Length2 = length(ets:tab2list(Tid)),
                         ?assert(9 =:= Length1 orelse 10 =:= Length1 orelse 11 =:= Length1)
                     end
                  },

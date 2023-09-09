@@ -34,6 +34,8 @@
         start_link/1,
         stop/1,
         stop/2,
+        ets_name/1,
+        is_task_exist/2,
         add_send_message/5,
         add_send_message/6,
         add_fun_apply/4,
@@ -44,7 +46,7 @@
 
 -export_type([
         add_options/0,
-        cancel_options/0,
+        search_task_spec/0,
         frequency/0,
         result_of_add/0,
         result_of_cancel/0
@@ -155,7 +157,7 @@ add_fun_apply(Id, Frequency, Fun, Arguments, Options) ->
 % @doc interface for delete event
 -spec cancel(Id, Options) -> Result when
     Id          :: atom(),
-    Options     :: cancel_options(),
+    Options     :: search_task_spec(),
     Result      :: result_of_cancel().
 
 cancel(Id, Options) ->
@@ -177,6 +179,28 @@ cancel(Id, Options) ->
             )
     end.
 
+-spec is_task_exist(Id, SearchTaskSpec) -> Result when
+    Id              :: atom(),
+    SearchTaskSpec  :: search_task_spec(),
+    Result          :: boolean().
+
+is_task_exist(Id, SearchTaskSpec) ->
+    try
+        case ets:select(ets_name(Id), search_task_ms(SearchTaskSpec)) of
+            [] -> false;
+            _Someting -> true
+        end
+    catch
+        _:_ ->
+            false
+    end.
+
+-spec ets_name(Id) -> Result when
+    Id      :: atom(),
+    Result  :: atom().
+
+ets_name(Id) -> ?SERVER(Id).
+
 % -------------------------- end of public api part ----------------------------
 
 % ============================== gen_server part ===============================
@@ -188,7 +212,7 @@ cancel(Id, Options) ->
 
 init(Id) ->
     {ok, #state{
-            ets_name = ets:new(?SERVER(Id), [set, protected, {keypos, #task.key}, named_table])
+            ets_name = ets:new(ets_name(Id), [set, protected, {keypos, #task.key}, named_table])
         }
     }.
 
@@ -198,7 +222,7 @@ init(Id) ->
 -spec handle_call(Message, From, State) -> Result when
     Message     :: Add | Cancel,
     Add         :: {'add_fun_apply', frequency(), fun(), Arguments, add_options()},
-    Cancel      :: {'cancel', cancel_options()},
+    Cancel      :: {'cancel', search_task_spec()},
 
     Arguments   :: list(),
 
@@ -239,14 +263,6 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State 
     {reply, Reply, State};
 
 handle_call({cancel, CancelOps}, _From, State = #state{ets_name = EtsName} = State) ->
-    MS = [{
-            #task{
-                'key' = {maps:get('function', CancelOps, '_'), maps:get('arguments', CancelOps, '_')},
-                'tag' = maps:get('tag', CancelOps, '_'),
-                _ = '_'
-            }, [], ['$_']
-          }],
-
     Frequency = maps:get('frequency', CancelOps, '_'),
     Gone = lists:map(
         fun
@@ -256,11 +272,10 @@ handle_call({cancel, CancelOps}, _From, State = #state{ets_name = EtsName} = Sta
                 {'cancelled', TRef};
             (Task) ->
                 remove_freq(Task, Frequency, State)
-        end, ets:select(EtsName, MS)
+        end, ets:select(EtsName, search_task_ms(CancelOps))
     ), {reply, Gone, State}.
 
 %-----------end of handle_call-------------
-
 
 %--------------handle_cast-----------------
 
@@ -319,6 +334,19 @@ code_change(_OldVsn, State, _Extra) ->
 % ----------------------- end of gen_server part -------------------------------
 
 % ============================= INTERNALS ======================================
+
+-spec search_task_ms(Opts) -> Result when
+    Opts    :: search_task_spec(),
+    Result  :: ets:match_spec().
+
+search_task_ms(Opts) ->
+    [{
+        #task{
+            'key' = {maps:get('function', Opts, '_'), maps:get('arguments',Opts, '_')},
+            'tag' = maps:get('tag', Opts, '_'),
+                _ = '_'
+        }, [], ['$_']
+    }].
 
 % @doc run on init if run_on_init in add_task options
 -spec may_run_on_init(Options, Fun, Arguments) -> Result when

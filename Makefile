@@ -15,7 +15,7 @@ else
 ERLC_OPTS += +debug_info
 endif
 
-TEST_ERLC_OPTS += +warn_export_vars +warn_shadow_vars +warn_obsolete_guard +debug_info +'{parse_transform, lager_transform}'
+TEST_ERLC_OPTS += +warn_export_vars +warn_shadow_vars +warn_obsolete_guard +debug_info
 
 # --------------------------------------------------------------------
 # Dependencies.
@@ -27,9 +27,8 @@ ifeq ($(shell basename $(shell dirname $(shell dirname $(realpath $(lastword $(M
 endif
 
 dep_teaser = git https://github.com/spylik/teaser master
-dep_lager = git https://github.com/erlang-lager/lager
 
-TEST_DEPS = lager teaser
+TEST_DEPS = teaser
 
 ifeq ($(USER),travis)
     TEST_DEPS += covertool
@@ -41,7 +40,7 @@ endif
 # Development enviroment ("make shell" to run it).
 # --------------------------------------------------------------------
 
-SHELL_DEPS = lager teaser sync
+SHELL_DEPS = teaser sync
 
 SHELL_OPTS = -config ${DEPS_DIR}/teaser/sys.config +c true +C multi_time_warp -pa ebin/ test/ -eval 'mlibs:discover()' -env ERL_LIBS deps -run mlibs autotest_on_compile
 

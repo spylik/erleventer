@@ -35,12 +35,12 @@
         stop/1,
         stop/2,
         ets_name/1,
+        server_name/1,
         is_task_exist/2,
         add_send_message/5,
         add_send_message/6,
         add_fun_apply/4,
         add_fun_apply/5,
-        server_name/1,
         cancel/2
     ]).
 

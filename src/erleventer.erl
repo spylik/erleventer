@@ -179,21 +179,22 @@ cancel(Id, Options) ->
             )
     end.
 
--spec is_task_exist(Id, SearchTaskSpec) -> Result when
-    Id              :: atom(),
+-spec is_task_exist(IdOrEtsName, SearchTaskSpec) -> Result when
+    IdOrEtsName     :: atom() | {ets, ets:tid() | atom},
     SearchTaskSpec  :: search_task_spec(),
     Result          :: boolean().
 
-is_task_exist(Id, SearchTaskSpec) ->
+is_task_exist({ets, Ets}, SearchTaskSpec) ->
     try
-        case ets:select(ets_name(Id), search_task_ms(SearchTaskSpec)) of
+        case ets:select(Ets, search_task_ms(SearchTaskSpec)) of
             [] -> false;
             _Someting -> true
         end
     catch
         _:_ ->
             false
-    end.
+    end;
+is_task_exist(Id, SearchTaskSpec) -> is_task_exist({ets, ets_name(Id)}, SearchTaskSpec).
 
 -spec ets_name(Id) -> Result when
     Id      :: atom(),

@@ -6,7 +6,8 @@
 
 -type add_options() :: #{
         'tag'           => term(),
-        'run_on_init'   => boolean()
+        'run_on_init'   => boolean(),
+        'subscriber'    => pid()
        }.
 
 -type result_of_add()       :: {'added', timer:tref()}
@@ -44,14 +45,16 @@
 
         tref        :: timer:tref() | '_',                  % current tref
         cast_fun    :: fun() | '_',                         % cast function (runtime helper data)
-        tag         :: tag() | '_'
+        tag         :: tag() | '_',
+        subscribers = #{} :: #{pid() => [frequency()]} | '_'
     }).
 
 -type task()  :: #task{}.
 
 
 -record(state, {
-        ets_name :: atom()
+        ets_name :: atom(),
+        monitors = #{} :: #{pid() => reference()}
     }).
 
 -type state() :: #state{}.

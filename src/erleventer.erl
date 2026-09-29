@@ -238,7 +238,8 @@ init(Id) ->
 
 
 handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State = #state{ets_name = EtsName} = State) ->
-    Reply = case ets:lookup(EtsName, {Fun, Arguments}) of
+    Key = {Fun, Arguments},
+    Reply = case ets:lookup(EtsName, Key) of
         [Task] ->
             add_freq(Task, Frequency, State);
         [] ->
@@ -252,7 +253,7 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State 
             end,
             {ok, TRef} = erlang:apply(CastFun, [Frequency]),
             Task = #task{
-                key = {Fun, Arguments},
+                key = Key,
                 frequency = #{Frequency => 1},
                 tag = maps:get('tag', Options, 'undefined'),
                 tref = TRef,
@@ -261,7 +262,7 @@ handle_call({'add_fun_apply', Frequency, Fun, Arguments, Options}, _From, State 
             ets:insert(EtsName, Task),
             {'added', TRef}
     end,
-    {reply, Reply, State};
+    {reply, Reply, may_track_subscriber(subscriber(Options), Key, Frequency, State)};
 
 handle_call({cancel, CancelOps}, _From, State = #state{ets_name = EtsName} = State) ->
     Frequency = maps:get('frequency', CancelOps, '_'),
@@ -295,13 +296,28 @@ handle_cast(stop, State) ->
 
 % @doc callbacks for gen_server handle_info.
 -spec handle_info(Message, State) -> Result when
-    Message :: {'cast_safe', fun(), list()},
+    Message :: {'cast_safe', fun(), list()} | {'DOWN', reference(), 'process', pid(), term()},
     State   :: term(),
     Result  :: {noreply, State}.
 
 handle_info({'cast_safe', Fun, Arguments}, State) ->
     _ = spawn(fun() -> erlang:apply(Fun, Arguments) end),
-    {noreply, State}.
+    {noreply, State};
+
+handle_info({'DOWN', _Ref, 'process', Pid, _Reason}, State = #state{ets_name = EtsName, monitors = Monitors}) ->
+    lists:foreach(fun(#task{key = Key, subscribers = Subscribers}) ->
+        lists:foreach(fun(Frequency) ->
+            case ets:lookup(EtsName, Key) of
+                [Task] -> remove_freq(Task, Frequency, State);
+                [] -> ok
+            end
+        end, maps:get(Pid, Subscribers)),
+        case ets:lookup(EtsName, Key) of
+            [#task{subscribers = Left} = Task] -> ets:insert(EtsName, Task#task{subscribers = maps:remove(Pid, Left)});
+            [] -> ok
+        end
+    end, [Task || #task{subscribers = Subscribers} = Task <- ets:tab2list(EtsName), maps:is_key(Pid, Subscribers)]),
+    {noreply, State#state{monitors = maps:remove(Pid, Monitors)}}.
 
 %-----------end of handle_info-------------
 
@@ -349,6 +365,29 @@ search_task_ms(Opts) ->
         }, [], ['$_']
     }].
 
+-spec subscriber(Options) -> 'undefined' | pid() when
+    Options :: add_options() | term().
+
+subscriber(#{'subscriber' := Pid}) when is_pid(Pid) -> Pid;
+subscriber(_NoSubscriber) -> 'undefined'.
+
+-spec may_track_subscriber(Subscriber, Key, Frequency, State) -> Result when
+    Subscriber  :: 'undefined' | pid(),
+    Key         :: {fun(), list()},
+    Frequency   :: frequency(),
+    State       :: state(),
+    Result      :: state().
+
+may_track_subscriber('undefined', _Key, _Frequency, State) ->
+    State;
+may_track_subscriber(Pid, Key, Frequency, State = #state{ets_name = EtsName, monitors = Monitors}) ->
+    [#task{subscribers = Subscribers} = Task] = ets:lookup(EtsName, Key),
+    true = ets:insert(EtsName, Task#task{subscribers = maps:put(Pid, [Frequency | maps:get(Pid, Subscribers, [])], Subscribers)}),
+    case maps:is_key(Pid, Monitors) of
+        true -> State;
+        false -> State#state{monitors = maps:put(Pid, erlang:monitor(process, Pid), Monitors)}
+    end.
+
 % @doc run on init if run_on_init in add_task options
 -spec may_run_on_init(Options, Fun, Arguments) -> Result when
     Options     :: add_options(),
@@ -359,7 +398,6 @@ search_task_ms(Opts) ->
 may_run_on_init(#{run_on_init := true}, Fun, Arguments) ->
     handle_info({'cast_safe', Fun, Arguments}, fake_state);
 may_run_on_init(_Options, _Fun, _Arguments) -> false.
-
 
 
 % @doc randomize frequency in period

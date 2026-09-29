@@ -365,8 +365,9 @@ search_task_ms(Opts) ->
         }, [], ['$_']
     }].
 
--spec subscriber(Options) -> 'undefined' | pid() when
-    Options :: add_options() | term().
+-spec subscriber(Options) -> Result when
+    Options :: add_options() | term(),
+    Result  :: 'undefined' | pid().
 
 subscriber(#{'subscriber' := Pid}) when is_pid(Pid) -> Pid;
 subscriber(_NoSubscriber) -> 'undefined'.
